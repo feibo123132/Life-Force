@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#284a36">
+  <title>生命森林</title>
+  <link rel="stylesheet" href="./forest.css">
+  <script src="./forest.js" defer></script>
+</head>
+<body>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="sprout" viewBox="0 0 24 24"><path d="M12 21v-9M12 15C6 15 3 11 4 6c5 0 8 3 8 9Zm0-3c0-5 3-8 8-8 0 5-3 8-8 8Z"/></symbol>
+    <symbol id="fertilizer-sack" viewBox="0 0 32 32">
+      <path d="M12 10c-1-2.2-3.7-4.2-3.2-6 .3-1.2 3.1-.8 4.8.1 1.4-1.6 3.7-1.6 5.1-.1 1.8-1 4.3-1.1 4.7.2.4 1.5-2.1 3.7-3.4 5.8 3.5 2.6 7.7 7.5 8.2 13.2.4 4.3-4.8 6-12.2 6S3.4 27.6 3.8 23.2C4.3 17.4 8.5 12.6 12 10Z" fill="#c68b42" stroke="#714018" stroke-width="1.7"/>
+      <path d="M12.8 11.2c-3.1 3.3-6.4 7.6-6.8 11.5-.4 3.2 3.6 4.6 9.7 4.6 3.8 0 6.8-.5 8.6-1.5 1.3-3.7-2.6-10.5-6.2-14.6Z" fill="#eab568" stroke="none"/>
+      <path d="M11.9 9.2c2.2 1 6 1.1 8.2 0" fill="none" stroke="#80521e" stroke-width="3"/>
+      <path d="M11.9 8.8c2.2 1 6 1.1 8.2 0" fill="none" stroke="#f6cd79" stroke-width="1.25"/>
+      <path d="M15.8 23.8v-4m0 1c-3.1.2-4.8-1.7-4.6-4 2.5-.1 4.6 1.4 4.6 4Zm0-.5c.3-2.6 2-4.2 4.8-4.4 0 2.6-1.8 4.3-4.8 4.4Z" fill="#9db83e" stroke="#617725" stroke-width="1.2"/>
+    </symbol>
+    <symbol id="move" viewBox="0 0 24 24"><circle cx="15" cy="4.5" r="2"/><path d="m7 11 3-3 3.5.5 2.5 4h4m-8-4-2 6 4 2v4m-4-6-3 5H3"/></symbol>
+    <symbol id="focus" viewBox="0 0 24 24"><path d="M12 6C9 4 6 4 3 5v13c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Zm0 0v13"/></symbol>
+    <symbol id="reflect" viewBox="0 0 24 24"><path d="M20 15a8 8 0 0 1-11-11 8.5 8.5 0 1 0 11 11Zm-5-9h5m-2.5-2.5v5"/></symbol>
+    <symbol id="save" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="12" rx="4"/><path d="M4 8h16M8 5h8m-6 7h4"/></symbol>
+    <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="spark" viewBox="0 0 24 24"><path d="M12 2c0 6 4 10 10 10-6 0-10 4-10 10 0-6-4-10-10-10 6 0 10-4 10-10Z"/></symbol>
+    <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="cart" viewBox="0 0 24 24"><path d="M2 3h3l3 12h11l3-9H6m3 12h10"/><circle cx="10" cy="21" r="1"/><circle cx="18" cy="21" r="1"/></symbol>
+    <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
+    <symbol id="edit-action" viewBox="0 0 24 24"><path d="m5 15-1 5 5-1L20 8l-4-4L5 15Zm9-9 4 4"/></symbol>
+  </svg>
+  <main class="world" id="forest" aria-labelledby="world-title">
+    <div class="camera" id="camera">
+      <div class="camera-stage">
+        <div class="scene" id="scene">
+          <img class="scene-image" src="./assets/peach-valley-farm.webp" width="1672" height="941" alt="山谷里，溪流穿过木桥，农田坐落在泉水和木屋之间。">
+          <div class="plots" id="plots" role="group" aria-label="农田"></div>
+          <div class="orbs" id="orbs" role="group" aria-label="泉边的待收生命力"></div>
+          <button class="cabin" id="cabin" type="button" aria-label="打开木屋里的今日行动"></button>
+        </div>
+      </div>
+    </div>
+    <div class="crop-tooltip" id="crop-tooltip" role="tooltip" hidden>
+      <strong id="crop-tooltip-name"></strong>
+      <span id="crop-tooltip-time"></span>
+      <progress id="crop-tooltip-progress" aria-label="成熟进度"></progress>
+    </div>
+    <header class="hud">
+      <div class="brand">
+        <button class="player-avatar" id="open-profile" type="button" aria-label="玩家资料与头像" title="更换头像"><img id="player-avatar-image" src="./assets/growth/fir-seedling.webp" alt=""></button>
+        <div class="player-stats">
+          <h1 id="world-title" class="visually-hidden">生命森林</h1>
+          <button class="player-name" id="player-name" type="button">森林旅人</button>
+          <div class="player-rank"><strong id="player-level">1 级</strong><span id="player-title">林间学徒</span></div>
+          <div class="player-xp">
+            <progress id="player-xp" value="0" max="20" aria-label="升级经验"></progress>
+            <span id="player-xp-label">0 / 20</span>
+          </div>
+          <div class="player-wallet">
+            <span><i class="coin-mark" aria-hidden="true"></i>金币 <strong id="player-gold">0</strong></span>
+            <button id="collect-life" type="button" disabled><svg aria-hidden="true"><use href="#spark"/></svg>生命力 <strong id="balance">0</strong><small id="pending-life" hidden></small></button>
+          </div>
+        </div>
+      </div>
+      <div class="hud-actions">
+        <button class="hud-shortcut" id="open-shop" type="button">
+          <img src="./assets/forest-shop.webp" alt="" width="256" height="256">
+          <span>商店</span>
+        </button>
+        <button class="hud-shortcut" id="open-actions" type="button">
+          <img src="./assets/daily-actions.webp" alt="" width="256" height="256">
+          <span>今日行动</span>
+        </button>
+        <button class="hud-shortcut" id="open-journal" type="button">
+          <img src="./assets/forest-journal.webp" alt="" width="256" height="256">
+          <span>森林手记</span>
+        </button>
+      </div>
+    </header>
+    <nav class="farm-tools" aria-label="农场工具">
+      <button class="hud-shortcut" id="tool-dig" type="button" aria-pressed="false"><img src="./assets/tools/dig.webp" alt=""><span>铲地</span></button>
+      <button class="hud-shortcut" id="tool-water" type="button" aria-pressed="false"><img src="./assets/tools/water.webp" alt=""><span>浇水</span></button>
+      <button class="hud-shortcut" id="tool-harvest" type="button" aria-pressed="false"><img src="./assets/tools/harvest-hand.webp" alt=""><span>收获</span></button>
+      <button class="hud-shortcut" id="open-bag" type="button"><img src="./assets/tools/bag.webp" alt=""><span>背包</span></button>
+      <button class="hud-shortcut" id="open-warehouse" type="button"><img src="./assets/tools/warehouse.webp" alt=""><span>仓库</span></button>
+      <button class="hud-shortcut" id="open-toolbox" type="button"><img src="./assets/tools/toolbox.webp" alt=""><span>工具箱</span></button>
+    </nav>
+    <img class="tool-cursor" id="tool-cursor" alt="" draggable="false" hidden>
+    <p class="notice" id="notice" role="status" hidden></p>
+    <p class="pan-hint">左右滑动探索山谷</p>
+  </main>
+  <dialog id="profile" aria-labelledby="profile-title">
+    <div class="dialog-heading"><h2 id="profile-title">玩家资料</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
+    <div class="profile-avatar">
+      <img id="profile-avatar-preview" src="./assets/growth/fir-seedling.webp" alt="当前头像" width="64" height="64">
+      <div class="profile-avatar-actions">
+        <button class="primary" id="choose-avatar" type="button">上传 PNG</button>
+        <button class="purchase-cancel" id="reset-avatar" type="button" hidden>恢复默认</button>
+        <input id="avatar-file" type="file" accept="image/png,.png" hidden>
+      </div>
+      <p class="guide" id="avatar-status" role="status"></p>
+    </div>
+    <form class="profile-form" id="profile-form">
+      <label for="name-input">用户名</label>
+      <div><input id="name-input" maxlength="14" required><button class="primary" type="submit">保存</button></div>
+    </form>
+    <p class="guide">收获成熟植物获得经验。1 级升 2 级需 20 经验，之后每级多需 8 点，最高 100 级。</p>
+    <ul class="rank-list" id="rank-list"></ul>
+  </dialog>
+  <dialog id="farm-inventory" aria-labelledby="inventory-title">
+    <div class="dialog-heading"><h2 id="inventory-title">背包</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
+    <div id="inventory-content"></div>
+  </dialog>
+  <dialog class="warehouse" id="warehouse" aria-labelledby="warehouse-title">
+    <div class="warehouse-decor" aria-hidden="true">
+      <img class="warehouse-vine warehouse-vine-left" src="./assets/warehouse/vine.webp" alt="">
+      <img class="warehouse-vine warehouse-vine-right" src="./assets/warehouse/vine.webp" alt="">
+      <img class="warehouse-lantern" src="./assets/warehouse/lantern.webp" alt="">
+      <img class="warehouse-squirrel" src="./assets/warehouse/squirrel.webp" alt="">
+      <img class="warehouse-mushrooms" src="./assets/warehouse/mushrooms.webp" alt="">
+      <img class="warehouse-tag warehouse-tag-sprout" src="./assets/warehouse/sprout-tag.webp" alt="">
+      <img class="warehouse-tag warehouse-tag-jar" src="./assets/warehouse/jar-tag.webp" alt="">
+    </div>
+    <header class="warehouse-heading">
+      <h2 id="warehouse-title"><span>仓库</span></h2>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭仓库" autofocus><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </header>
+    <div class="warehouse-toolbar">
+      <h3>收获物 <span id="warehouse-count"></span></h3>
+      <label class="warehouse-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="5.5"/><path d="m14 14 5 5"/></svg>
+        <input id="warehouse-search" type="search" placeholder="搜索作物" aria-label="搜索作物" maxlength="30">
+      </label>
+    </div>
+    <div class="warehouse-shelf" id="warehouse-shelf">
+      <ul class="warehouse-grid" id="warehouse-grid" aria-label="收获物库存"></ul>
+      <div class="warehouse-empty" id="warehouse-empty" hidden>
+        <img src="./assets/tools/warehouse.webp" alt="" width="72" height="72">
+        <p id="warehouse-empty-text"></p>
+      </div>
+    </div>
+    <footer class="warehouse-footer">
+      <div class="warehouse-total">库存总价 <i class="coin-mark" aria-hidden="true"></i><strong id="warehouse-value">0</strong> 金币</div>
+      <button class="warehouse-sell-all" id="warehouse-sell-all" type="button" disabled><svg aria-hidden="true"><use href="#cart"/></svg>一键出售</button>
+      <p id="warehouse-status" role="status"></p>
+    </footer>
+  </dialog>
+  <dialog class="purchase-dialog" id="warehouse-sale" aria-labelledby="warehouse-sale-title" aria-describedby="warehouse-sale-detail">
+    <div class="dialog-heading"><h2 id="warehouse-sale-title">出售全部收获物？</h2></div>
+    <p id="warehouse-sale-detail"></p>
+    <form class="purchase-actions" id="warehouse-sale-form" method="dialog">
+      <button class="purchase-cancel" type="submit" autofocus>取消</button>
+      <button class="warehouse-sell-all" id="warehouse-sale-confirm" type="submit">确认出售</button>
+    </form>
+  </dialog>
+  <dialog id="toolbox" aria-labelledby="toolbox-title">
+    <div class="dialog-heading"><h2 id="toolbox-title">工具箱</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
+    <div class="toolbox-options">
+      <button class="habit" id="open-background-music" type="button">
+        <span class="habit-icon" aria-hidden="true">♫</span>
+        <span class="habit-copy"><strong>背景音乐</strong></span>
+      </button>
+    </div>
+  </dialog>
+  <dialog id="background-music" aria-labelledby="background-music-title">
+    <div class="dialog-heading"><h2 id="background-music-title">背景音乐</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
+    <div class="music-controls">
+      <button class="primary" id="choose-music" type="button">选择本地音频</button>
+      <input id="music-file" type="file" accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg,.opus" hidden>
+      <p class="guide" id="music-track">选择 MP3、WAV 等音频，再点播放。</p>
+      <audio id="music-player" controls loop preload="metadata" aria-label="背景音乐播放器" hidden></audio>
+      <p class="guide" id="music-status" role="status" hidden></p>
+    </div>
+  </dialog>
+  <dialog id="dig-dialog" aria-labelledby="dig-title">
+    <div class="dialog-heading"><h2 id="dig-title">铲掉这株植物？</h2></div>
+    <p class="guide" id="dig-detail"></p>
+    <form class="purchase-actions" method="dialog" id="dig-form">
+      <button class="purchase-cancel" type="submit" autofocus>取消</button>
+      <button class="primary" id="dig-confirm" type="submit">确认铲地</button>
+    </form>
+  </dialog>
+  <dialog class="purchase-dialog" id="reclaim-dialog" aria-labelledby="reclaim-title" aria-describedby="reclaim-detail">
+    <div class="dialog-heading"><h2 id="reclaim-title">开垦新田</h2></div>
+    <p id="reclaim-detail"></p>
+    <p id="reclaim-status" role="status"></p>
+    <form class="purchase-actions" id="reclaim-form" method="dialog">
+      <button class="purchase-cancel" type="submit" autofocus>返回</button>
+      <button class="primary" id="reclaim-confirm" type="submit">开垦</button>
+    </form>
+  </dialog>
+  <dialog id="actions" aria-labelledby="actions-title">
+    <div class="dialog-heading">
+      <div><p class="dialog-kicker">森林小屋 <span id="action-count">0 / 4</span></p><h2 id="actions-title">今日行动</h2></div>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg><use href="#close"/></svg></button></form>
+    </div>
+    <div id="habits" class="habits"></div>
+    <div class="action-toolbar">
+      <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>新增行动</button>
+      <button class="action-edit-toggle" id="toggle-action-edit" type="button" aria-pressed="false" aria-controls="habits"><svg aria-hidden="true"><use href="#edit-action"/></svg>编辑</button>
+    </div>
+    <p class="guide" id="action-status" role="status"></p>
+    <p id="guide-text" class="guide"></p>
+    <p class="storage" id="storage-note">行动、植物与库存保存在此浏览器</p>
+  </dialog>
+  <dialog id="action-editor" aria-labelledby="action-editor-title">
+    <div class="dialog-heading">
+      <h2 id="action-editor-title">新增行动</h2>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <form class="action-editor-form" id="action-editor-form">
+      <label for="action-name">行动名称</label>
+      <input id="action-name" maxlength="40" required autofocus>
+      <label for="action-description">具体做法（选填）</label>
+      <textarea id="action-description" maxlength="140" rows="2"></textarea>
+      <div class="action-editor-buttons">
+        <button class="action-delete" id="delete-action" type="button" hidden>删除行动</button>
+        <button class="primary" id="create-action" type="submit">添加</button>
+      </div>
+    </form>
+    <div class="action-delete-confirm" id="action-delete-confirm" hidden>
+      <p id="action-delete-message"></p>
+      <div class="purchase-actions">
+        <button class="purchase-cancel" id="cancel-action-delete" type="button">取消</button>
+        <button class="action-delete" id="confirm-action-delete" type="button">确认删除</button>
+      </div>
+    </div>
+    <p class="guide" id="action-editor-status" role="status"></p>
+  </dialog>
+  <dialog class="shop" id="shop" aria-labelledby="shop-title">
+    <div class="shop-stall">
+      <div class="shop-heading">
+        <h2 id="shop-title">森林商店</h2>
+        <p class="dialog-balance"><i class="shop-leaf" aria-hidden="true"></i>生命力余额 <strong id="shop-balance">0</strong></p>
+        <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+      </div>
+      <div class="shop-categories" id="shop-categories" role="group" aria-label="商品分类">
+        <button type="button" aria-pressed="true" aria-controls="shop-plants"><svg aria-hidden="true"><use href="#sprout"/></svg>植物种苗</button>
+        <button type="button" aria-pressed="false" aria-controls="shop-fertilizer"><svg class="shop-sack" aria-hidden="true"><use href="#fertilizer-sack"/></svg>化肥</button>
+      </div>
+      <div class="shop-shelf">
+        <div class="shop-grid" id="shop-plants"></div>
+        <div class="shop-grid shop-fertilizers" id="shop-fertilizer" hidden></div>
+        <p class="shop-status" id="shop-status" role="status"></p>
+      </div>
+    </div>
+  </dialog>
+  <dialog class="purchase-dialog" id="purchase-dialog" aria-labelledby="purchase-title" aria-describedby="purchase-detail">
+    <div class="dialog-heading"><h2 id="purchase-title">是否确定购买？</h2></div>
+    <p id="purchase-detail"></p>
+    <form class="purchase-actions" id="purchase-form" method="dialog">
+      <button class="purchase-cancel" type="submit" autofocus>取消</button>
+      <button class="primary" id="purchase-confirm" type="submit">确定购买</button>
+    </form>
+  </dialog>
+  <dialog id="plant-picker" aria-labelledby="plant-picker-title">
+    <div class="dialog-heading">
+      <div><h2 id="plant-picker-title">想种什么？</h2><p class="dialog-balance">生命力余额 <strong id="plant-balance">0</strong></p></div>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <div class="plant-options" id="plant-options"></div>
+  </dialog>
+  <dialog id="journal" aria-labelledby="journal-title">
+    <div class="dialog-heading">
+      <div><p id="journal-kicker" class="dialog-kicker"></p><h2 id="journal-title"></h2></div>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg><use href="#close"/></svg></button></form>
+    </div>
+    <div id="journal-content"></div>
+    <section class="fertilizer-panel" id="fertilizer-panel" aria-label="植物生长" hidden>
+      <p id="growth-progress-label"></p>
+      <progress id="growth-progress" aria-label="生长值" tabindex="-1"></progress>
+      <div class="fertilizer-options" id="fertilizer-options" role="group" aria-label="选择化肥施用"></div>
+      <button class="primary" id="journal-harvest" type="button" hidden>收获</button>
+      <p class="guide" id="fertilizer-status" role="status"></p>
+    </section>
+  </dialog>
+</body>
+</html>
