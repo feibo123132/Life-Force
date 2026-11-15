@@ -36,7 +36,7 @@
         <div class="scene" id="scene">
           <img class="scene-image" src="./assets/peach-valley-farm.webp" width="1672" height="941" alt="山谷里，溪流穿过木桥，农田坐落在泉水和木屋之间。">
           <div class="plots" id="plots" role="group" aria-label="农田"></div>
-          <div class="orbs" id="orbs" role="group" aria-label="泉边的待收生命力"></div>
+          <div class="orbs" id="orbs" role="group" aria-label="家门口的待收生命力"></div>
           <button class="cabin" id="cabin" type="button" aria-label="打开木屋里的今日行动"></button>
         </div>
       </div>
@@ -54,8 +54,8 @@
           <button class="player-name" id="player-name" type="button">森林旅人</button>
           <div class="player-rank"><strong id="player-level">1 级</strong><span id="player-title">林间学徒</span></div>
           <div class="player-xp">
-            <progress id="player-xp" value="0" max="20" aria-label="升级经验"></progress>
-            <span id="player-xp-label">0 / 20</span>
+            <progress id="player-xp" value="0" max="200" aria-label="升级经验"></progress>
+            <span id="player-xp-label">0 / 200</span>
           </div>
           <div class="player-wallet">
             <span><i class="coin-mark" aria-hidden="true"></i>金币 <strong id="player-gold">0</strong></span>
@@ -105,7 +105,7 @@
       <label for="name-input">用户名</label>
       <div><input id="name-input" maxlength="14" required><button class="primary" type="submit">保存</button></div>
     </form>
-    <p class="guide">收获成熟植物获得经验。1 级升 2 级需 20 经验，之后每级多需 8 点，最高 100 级。</p>
+    <p class="guide">收获成熟植物获得经验。1 级升 2 级需 200 经验，之后每级多需 80 点，最高 100 级。</p>
     <ul class="rank-list" id="rank-list"></ul>
   </dialog>
   <dialog id="farm-inventory" aria-labelledby="inventory-title">
@@ -161,6 +161,28 @@
         <span class="habit-icon" aria-hidden="true">♫</span>
         <span class="habit-copy"><strong>背景音乐</strong></span>
       </button>
+      <button class="habit" id="open-life-transfer" type="button">
+        <span class="habit-icon" aria-hidden="true"><svg><use href="#spark"/></svg></span>
+        <span class="habit-copy"><strong>生命力传递</strong></span>
+      </button>
+    </div>
+  </dialog>
+  <dialog id="life-transfer" aria-labelledby="life-transfer-title">
+    <div class="life-transfer-layout">
+      <div class="life-transfer-heading">
+        <h2 id="life-transfer-title">生命力传递</h2>
+        <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭生命力传递" autofocus><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+      </div>
+      <img class="life-transfer-art" src="./assets/roadshow-guitar.png" width="1086" height="1448" loading="lazy" alt="鲸歌女仆抱着吉他演奏">
+      <form class="life-transfer-form" id="life-transfer-form">
+        <div class="life-transfer-amounts">
+          <button type="submit" name="amount" value="1"><svg aria-hidden="true"><use href="#spark"/></svg>传递 1 点生命力</button>
+          <button type="submit" name="amount" value="2"><svg aria-hidden="true"><use href="#spark"/></svg>传递 2 点生命力</button>
+        </div>
+        <label for="life-transfer-message">留言 <span>（可选）</span></label>
+        <textarea id="life-transfer-message" rows="2" placeholder="想说的话可以写在这里"></textarea>
+        <p id="life-transfer-status" role="status">界面预览 · 可以试传生命力</p>
+      </form>
     </div>
   </dialog>
   <dialog id="background-music" aria-labelledby="background-music-title">
@@ -168,8 +190,8 @@
     <div class="music-controls">
       <button class="primary" id="choose-music" type="button">选择本地音频</button>
       <input id="music-file" type="file" accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg,.opus" hidden>
-      <p class="guide" id="music-track">选择 MP3、WAV 等音频，再点播放。</p>
-      <audio id="music-player" controls loop preload="metadata" aria-label="背景音乐播放器" hidden></audio>
+      <p class="guide" id="music-track">Sunny Mornings · Peder B. Helland</p>
+      <audio id="music-player" src="./assets/music/sunny-mornings.mp3" controls loop preload="none" aria-label="背景音乐播放器"></audio>
       <p class="guide" id="music-status" role="status" hidden></p>
     </div>
   </dialog>
@@ -191,18 +213,44 @@
     </form>
   </dialog>
   <dialog id="actions" aria-labelledby="actions-title">
-    <div class="dialog-heading">
-      <div><p class="dialog-kicker">森林小屋 <span id="action-count">0 / 4</span></p><h2 id="actions-title">今日行动</h2></div>
-      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg><use href="#close"/></svg></button></form>
+    <div class="action-board">
+      <header class="action-board-heading">
+        <span class="action-art action-board-top" aria-hidden="true"></span>
+        <button class="action-art action-log-tag" type="button" id="open-action-log" aria-label="打开森林日志"></button>
+        <h2 class="visually-hidden" id="actions-title">今日行动</h2>
+        <form method="dialog"><button class="action-board-close" type="submit" aria-label="关闭"></button></form>
+      </header>
+      <div class="action-board-paper">
+        <div class="action-summary">
+          <div class="action-progress-count"><span>今日进度</span><strong id="action-count">0 / 0</strong></div>
+          <div class="action-progress" id="action-progress" aria-hidden="true">
+            <span class="action-progress-track"></span>
+            <i class="action-art"></i><i class="action-art"></i><i class="action-art"></i><i class="action-art"></i><i class="action-art"></i>
+          </div>
+          <div class="action-total"><i class="action-art action-spark" aria-hidden="true"></i><span>今日可获得<br>生命力 <strong id="action-total">+0</strong></span></div>
+        </div>
+        <div class="action-category-bar">
+          <span class="action-art action-category-title" role="img" aria-label="行动分类"></span>
+          <div id="action-categories" class="action-categories" role="group" aria-label="行动分类"></div>
+        </div>
+        <div class="action-list">
+          <div id="habits" class="habits"></div>
+          <p class="empty" id="action-empty" hidden></p>
+        </div>
+        <div class="action-streak">
+          <i class="action-art action-chest" aria-hidden="true"></i>
+          <p id="action-bonus-copy">今日完成 <b>5</b> 项行动<br>可额外获得 <strong>生命力 +1</strong>！</p>
+          <div class="action-streak-days"><i class="action-art action-calendar" aria-hidden="true"></i><span>连续完成天数 <strong id="action-streak">0</strong> 天</span></div>
+        </div>
+        <div class="action-toolbar">
+          <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>新增行动</button>
+          <button class="action-edit-toggle" id="toggle-action-edit" type="button" aria-pressed="false" aria-controls="habits"><svg aria-hidden="true"><use href="#edit-action"/></svg>编辑</button>
+        </div>
+        <p class="guide" id="action-status" role="status"></p>
+        <p class="storage visually-hidden" id="storage-note" role="status">行动、植物与库存保存在此浏览器</p>
+      </div>
+      <div class="action-board-footer" aria-hidden="true"><span class="action-art action-board-bottom"></span></div>
     </div>
-    <div id="habits" class="habits"></div>
-    <div class="action-toolbar">
-      <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>新增行动</button>
-      <button class="action-edit-toggle" id="toggle-action-edit" type="button" aria-pressed="false" aria-controls="habits"><svg aria-hidden="true"><use href="#edit-action"/></svg>编辑</button>
-    </div>
-    <p class="guide" id="action-status" role="status"></p>
-    <p id="guide-text" class="guide"></p>
-    <p class="storage" id="storage-note">行动、植物与库存保存在此浏览器</p>
   </dialog>
   <dialog id="action-editor" aria-labelledby="action-editor-title">
     <div class="dialog-heading">
@@ -214,6 +262,10 @@
       <input id="action-name" maxlength="40" required autofocus>
       <label for="action-description">具体做法（选填）</label>
       <textarea id="action-description" maxlength="140" rows="2"></textarea>
+      <label for="action-category">行动分类</label>
+      <select id="action-category" name="category"></select>
+      <label for="action-reward">生命力奖励（点）</label>
+      <input id="action-reward" type="number" inputmode="numeric" min="1" max="9007199254740991" step="1" value="1" required>
       <div class="action-editor-buttons">
         <button class="action-delete" id="delete-action" type="button" hidden>删除行动</button>
         <button class="primary" id="create-action" type="submit">添加</button>
@@ -262,18 +314,30 @@
     <div class="plant-options" id="plant-options"></div>
   </dialog>
   <dialog id="journal" aria-labelledby="journal-title">
-    <div class="dialog-heading">
-      <div><p id="journal-kicker" class="dialog-kicker"></p><h2 id="journal-title"></h2></div>
-      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg><use href="#close"/></svg></button></form>
+    <div class="journal-book">
+      <div class="journal-front">
+        <img class="journal-cover-art" id="journal-cover-art" src="./assets/forest-journal.webp" alt="" width="256" height="256">
+        <h2 id="journal-title">森林手记</h2>
+        <p id="journal-kicker" hidden></p>
+        <section class="fertilizer-panel" id="fertilizer-panel" aria-label="植物生长" hidden>
+          <p id="growth-progress-label"></p>
+          <progress id="growth-progress" aria-label="生长值" tabindex="-1"></progress>
+          <div class="fertilizer-options" id="fertilizer-options" role="group" aria-label="选择化肥施用"></div>
+          <button class="primary" id="journal-harvest" type="button" hidden>收获</button>
+          <p class="guide" id="fertilizer-status" role="status"></p>
+        </section>
+      </div>
+      <section class="journal-page" aria-labelledby="journal-records-title">
+        <header class="journal-page-heading">
+          <h3 id="journal-records-title">行动记录</h3>
+          <span id="journal-count" hidden></span>
+        </header>
+        <div id="journal-content" class="journal-content"></div>
+      </section>
+      <form class="journal-close" method="dialog">
+        <button type="submit" aria-label="关闭森林手记" autofocus><svg aria-hidden="true"><use href="#close"/></svg></button>
+      </form>
     </div>
-    <div id="journal-content"></div>
-    <section class="fertilizer-panel" id="fertilizer-panel" aria-label="植物生长" hidden>
-      <p id="growth-progress-label"></p>
-      <progress id="growth-progress" aria-label="生长值" tabindex="-1"></progress>
-      <div class="fertilizer-options" id="fertilizer-options" role="group" aria-label="选择化肥施用"></div>
-      <button class="primary" id="journal-harvest" type="button" hidden>收获</button>
-      <p class="guide" id="fertilizer-status" role="status"></p>
-    </section>
   </dialog>
 </body>
 </html>

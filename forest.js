@@ -7,6 +7,12 @@ const defaultHabits = {
   save: { name: "好好存钱", description: "按计划实际存入一笔", icon: "save" },
 };
 const initialHabits = () => Object.entries(defaultHabits).map(([id, { name, description }]) => ({ id, name, description }));
+const actionCategories = new Map([
+  ["all", "全部"], ["study", "学习"], ["work", "工作"],
+  ["exercise", "锻炼"], ["music", "音乐"], ["other", "其它"],
+]);
+const dailyActionGoal = 5;
+const dailyActionBonus = "daily-action-bonus";
 // The old IDs are needed to keep existing crops on the same tile where possible.
 const legacyPlots = [[2, 2], [3, 1], [1, 3], [4, 2], [2, 4]];
 for (const [rows, columns] of [[5, 5], [6, 7]]) {
@@ -46,14 +52,15 @@ const sceneWidth = 1672;
 const sceneHeight = 941;
 const maxSceneZoom = 1.65;
 let sceneZoom = 1;
-const orbPositions = [[442, 342], [382, 320], [501, 318], [422, 263], [486, 253]];
+const orbCenter = [74.2, 50.2];
+const orbOffsets = [[-1, -.5], [0, -.5], [1, -.5], [-.5, .5], [.5, .5]];
 const plants = new Map([
-  ["fir", { name: "小杉树", unlockLevel: 10, emoji: "🌲", sprite: "./assets/island-fir.webp", height: 170, price: 4, maturity: 90, xp: 10, gold: 14 }],
-  ["sunflower", { name: "向日葵", unlockLevel: 15, sprite: "./assets/sunflower.webp", height: 122, price: 5, maturity: 105, xp: 13, gold: 18 }],
-  ["banana", { name: "香蕉树", unlockLevel: 20, sprite: "./assets/banana-original-two-bunches.webp", height: 170, price: 6, maturity: 135, xp: 18, gold: 25 }],
-  ["cherry", { name: "樱花树", unlockLevel: 25, sprite: "./assets/cherry.webp", height: 155, price: 7, maturity: 165, xp: 24, gold: 34 }],
-  ["reeds", { name: "芦苇", unlockLevel: 5, sprite: "./assets/reeds.webp", height: 111, price: 3, maturity: 75, xp: 8, gold: 11 }],
-  ["rice", { name: "水稻", unlockLevel: 1, sprite: "./assets/rice.webp", height: 86, price: 2, maturity: 60, xp: 6, gold: 8 }],
+  ["fir", { name: "小杉树", unlockLevel: 10, emoji: "🌲", sprite: "./assets/island-fir.webp", height: 170, price: 6, maturity: 90, xp: 138, gold: 14 }],
+  ["sunflower", { name: "向日葵", unlockLevel: 15, sprite: "./assets/sunflower.webp", height: 122, price: 8, maturity: 105, xp: 192, gold: 18 }],
+  ["banana", { name: "香蕉树", unlockLevel: 20, sprite: "./assets/banana-original-two-bunches.webp", height: 170, price: 10, maturity: 135, xp: 250, gold: 25 }],
+  ["cherry", { name: "樱花树", unlockLevel: 25, sprite: "./assets/cherry.webp", height: 155, price: 12, maturity: 165, xp: 312, gold: 34 }],
+  ["reeds", { name: "芦苇", unlockLevel: 5, sprite: "./assets/reeds.webp", height: 111, price: 4, maturity: 75, xp: 88, gold: 11 }],
+  ["rice", { name: "水稻", unlockLevel: 1, sprite: "./assets/rice.webp", height: 86, price: 2, maturity: 60, xp: 42, gold: 8 }],
 ]);
 const growthStages = [
   { label: "成熟期", ratio: 1, scale: 1 },
@@ -213,11 +220,11 @@ function updatePlotGrowth(tree, button, now) {
 
 function updateJournalGrowth(tree, now) {
   const appearance = plantAppearance(tree, now);
-  const image = el["journal-content"].firstElementChild;
-  if (image.getAttribute("src") !== appearance.sprite) {
-    image.src = appearance.sprite;
-    el["journal-kicker"].textContent = `种于 ${formatDate(tree.date)} · ${appearance.label}`;
-  }
+  const image = el["journal-cover-art"];
+  if (image.getAttribute("src") !== appearance.sprite) image.src = appearance.sprite;
+  const subtitle = `种于 ${formatDate(tree.date)} · ${appearance.label}`;
+  const kicker = el["journal-kicker"];
+  if (kicker.textContent !== subtitle) kicker.textContent = subtitle;
   const points = growthPoints(tree, now);
   const maturity = maturityTarget(tree);
   const isMature = points >= maturity;
@@ -254,7 +261,7 @@ function startingState() {
     fertilizerPurchases: [],
     spentPlantEnergyIds: [],
     warehouse: {},
-    player: { name: "森林旅人", xp: 0, gold: 0 },
+    player: { name: "森林旅人", xp: 0, gold: 0, xpScale: 10 },
   };
 }
 
@@ -264,6 +271,12 @@ function readState() {
     localStorage.removeItem(demoStorageKey);
     const saved = JSON.parse(localStorage.getItem(storageKey));
     if (saved && Array.isArray(saved.entries) && Array.isArray(saved.trees)) {
+      const player = { ...startingState().player, ...saved.player };
+      // Scale legacy XP once so the new thresholds preserve existing progress.
+      if (saved.player?.xpScale !== 10) {
+        player.xp *= 10;
+        player.xpScale = 10;
+      }
       return {
         ...saved,
         ...migrateField(saved),
@@ -272,7 +285,7 @@ function readState() {
         fertilizerPurchases: Array.isArray(saved.fertilizerPurchases) ? saved.fertilizerPurchases : [],
         spentPlantEnergyIds: Array.isArray(saved.spentPlantEnergyIds) ? saved.spentPlantEnergyIds : [],
         warehouse: saved.warehouse ?? {},
-        player: { name: "森林旅人", xp: 0, gold: 0, ...saved.player },
+        player,
       };
     }
   } catch {
@@ -355,14 +368,60 @@ function showActions() {
   el.actions.showModal();
 }
 
+function dailyActionStreak(day) {
+  const totals = new Map();
+  for (const { date, kind } of state.entries) {
+    if (date && kind !== dailyActionBonus && kind !== "sample") totals.set(date, (totals.get(date) ?? 0) + 1);
+  }
+  const cursor = new Date(`${day}T00:00:00Z`);
+  if ((totals.get(day) ?? 0) < dailyActionGoal) cursor.setUTCDate(cursor.getUTCDate() - 1);
+  let streak = 0;
+  while ((totals.get(cursor.toISOString().slice(0, 10)) ?? 0) >= dailyActionGoal) {
+    streak++;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return streak;
+}
+
 function spentEnergyIds() {
   const purchases = [...state.trees, ...state.waitingCrops, ...state.seedlings, ...state.fertilizerPurchases];
   return new Set([...state.spentPlantEnergyIds, ...purchases.flatMap(purchase => purchase.energyIds)]);
 }
 
+function actionReward(item) {
+  return item?.reward ?? 1;
+}
+
+// Keep the original ID for the first point so existing purchases still link to their action.
+function energyEntryId(id) {
+  return id.split("#", 1)[0];
+}
+
 function availableEnergy() {
-  const used = spentEnergyIds();
-  return state.entries.filter(entry => entry.collected && !used.has(entry.id));
+  const spentByEntry = new Map();
+  for (const id of spentEnergyIds()) {
+    const entryId = energyEntryId(id);
+    spentByEntry.set(entryId, (spentByEntry.get(entryId) ?? 0) + 1);
+  }
+  return state.entries.reduce((total, entry) => entry.collected
+    ? total + (actionReward(entry) - (spentByEntry.get(entry.id) ?? 0))
+    : total, 0);
+}
+
+function availableEnergyIds(amount) {
+  const spent = spentEnergyIds();
+  const ids = [];
+  for (const entry of state.entries) {
+    if (!entry.collected) continue;
+    const reward = actionReward(entry);
+    for (let point = 0; point < reward; point++) {
+      const id = point === 0 ? entry.id : `${entry.id}#${point}`;
+      if (spent.has(id)) continue;
+      ids.push(id);
+      if (ids.length === amount) return ids;
+    }
+  }
+  return ids;
 }
 
 function notify(message) {
@@ -376,20 +435,64 @@ const habitButtons = new Map();
 const plantOptions = new Map();
 const fertilizerOptions = new Map();
 let editingHabit;
+let actionFilter = "all";
+
+function habitCategory(habit) {
+  const category = habit?.category;
+  return category !== "all" && actionCategories.has(category) ? category : "other";
+}
+
+for (const [category, label] of actionCategories) {
+  const tab = document.createElement("button");
+  tab.type = "button";
+  tab.dataset.category = category;
+  const artwork = document.createElement("i");
+  artwork.className = "action-art action-category-icon";
+  artwork.setAttribute("aria-hidden", "true");
+  tab.append(artwork, label);
+  tab.addEventListener("click", () => {
+    actionFilter = category;
+    filterHabits();
+    el.habits.scrollTop = 0;
+  });
+  el["action-categories"].append(tab);
+  if (category !== "all") el["action-category"].append(new Option(label, category));
+}
+
+function filterHabits() {
+  for (const tab of el["action-categories"].children) {
+    tab.setAttribute("aria-pressed", String(tab.dataset.category === actionFilter));
+  }
+  let visibleCount = 0;
+  for (const { row } of habitButtons.values()) {
+    row.hidden = actionFilter !== "all" && row.dataset.category !== actionFilter;
+    if (!row.hidden) visibleCount++;
+  }
+  el.habits.classList.toggle("is-scrollable", visibleCount > 5);
+  el["action-empty"].hidden = visibleCount > 0;
+  el["action-empty"].textContent = state.habits.length ? "这个分类还没有行动。" : "还没有行动，点击新增行动开始记录。";
+}
 
 function renderHabits() {
   habitButtons.clear();
   el.habits.replaceChildren();
   for (const habit of state.habits) {
+    const category = habitCategory(habit);
     const row = document.createElement("div");
     row.className = "action-row";
+    row.dataset.category = category;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "habit";
     button.dataset.kind = habit.id;
     const artwork = document.createElement("span");
-    artwork.className = "habit-icon";
-    artwork.innerHTML = icon(defaultHabits[habit.id]?.icon ?? "spark");
+    artwork.className = "action-art habit-art";
+    artwork.dataset.art = category === "other" ? ({ study: "study", move: "exercise" }[habit.id] ?? "other") : category;
+    artwork.setAttribute("aria-hidden", "true");
+    const chip = document.createElement("span");
+    chip.className = "habit-category";
+    chip.dataset.category = category;
+    chip.textContent = actionCategories.get(category);
     const copy = document.createElement("span");
     copy.className = "habit-copy";
     const name = document.createElement("strong");
@@ -398,11 +501,23 @@ function renderHabits() {
     if (habit.description) {
       const description = document.createElement("small");
       description.textContent = habit.description;
+      description.title = habit.description;
       copy.append(description);
     }
+    const side = document.createElement("span");
+    side.className = "habit-side";
+    const reward = document.createElement("span");
+    reward.className = "habit-reward";
+    const spark = document.createElement("i");
+    spark.className = "action-art action-spark";
+    spark.setAttribute("aria-hidden", "true");
+    const rewardAmount = document.createElement("span");
+    reward.append(spark, rewardAmount);
     const control = document.createElement("span");
-    control.className = "habit-control";
-    button.append(artwork, copy, control);
+    control.className = "action-art habit-control";
+    control.setAttribute("aria-hidden", "true");
+    side.append(reward, control);
+    button.append(artwork, chip, copy, side);
     button.addEventListener("click", () => toggleActionCompletion(habit.id));
 
     const edit = document.createElement("button");
@@ -414,14 +529,9 @@ function renderHabits() {
     edit.addEventListener("click", () => openActionEditor(habit.id));
     row.append(button, edit);
     el.habits.append(row);
-    habitButtons.set(habit.id, { button, control, edit });
+    habitButtons.set(habit.id, { row, button, edit, rewardAmount });
   }
-  if (!state.habits.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "还没有行动。添加一项想每天做的小事吧。";
-    el.habits.append(empty);
-  }
+  filterHabits();
 }
 
 function openActionEditor(id) {
@@ -431,6 +541,8 @@ function openActionEditor(id) {
   el["action-name"].value = habit?.name ?? "";
   el["action-name"].setCustomValidity("");
   el["action-description"].value = habit?.description ?? "";
+  el["action-category"].value = habit ? habitCategory(habit) : actionFilter === "all" ? "other" : actionFilter;
+  el["action-reward"].value = actionReward(habit);
   el["action-editor-status"].textContent = "";
   el["delete-action"].hidden = !habit;
   el["create-action"].hidden = Boolean(habit);
@@ -462,6 +574,7 @@ el["toggle-action-edit"].addEventListener("click", () => {
   setActionEditMode(!el.habits.classList.contains("is-editing"));
 });
 el["add-action"].addEventListener("click", () => openActionEditor());
+el["open-action-log"].addEventListener("click", () => showJournal());
 el["action-editor-form"].addEventListener("input", () => {
   const name = el["action-name"].value.trim();
   el["action-name"].setCustomValidity(name ? "" : "请输入行动名称。");
@@ -470,12 +583,18 @@ el["action-editor-form"].addEventListener("input", () => {
     el["action-editor-status"].textContent = "请输入行动名称后自动保存。";
     return;
   }
+  const reward = el["action-reward"].valueAsNumber;
+  if (!el["action-reward"].validity.valid) {
+    el["action-editor-status"].textContent = "请输入大于等于 1 的整数作为生命力奖励。";
+    return;
+  }
   if (!state.habits.some(habit => habit.id === editingHabit)) {
     el["action-editor-status"].textContent = "该行动已被删除。";
     return;
   }
   const description = el["action-description"].value.trim();
-  const habits = state.habits.map(habit => habit.id === editingHabit ? { ...habit, name, description } : habit);
+  const category = el["action-category"].value;
+  const habits = state.habits.map(habit => habit.id === editingHabit ? { ...habit, name, description, category, reward } : habit);
   if (saveHabits(habits)) el["action-editor-status"].textContent = "已保存";
 });
 el["action-editor-form"].addEventListener("submit", event => {
@@ -488,8 +607,10 @@ el["action-editor-form"].addEventListener("submit", event => {
     return;
   }
   const description = el["action-description"].value.trim();
+  const category = el["action-category"].value;
+  const reward = el["action-reward"].valueAsNumber;
   const id = crypto.randomUUID?.() ?? `action-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
-  const habit = { id, name, description };
+  const habit = { id, name, description, category, reward };
   if (saveHabits([...state.habits, habit])) el["action-editor"].close();
 });
 el["delete-action"].addEventListener("click", () => {
@@ -512,18 +633,19 @@ el["confirm-action-delete"].addEventListener("click", () => {
 });
 el["action-editor"].addEventListener("close", () => {
   if (!el.actions.open) return;
-  const edit = el.habits.classList.contains("is-editing") && habitButtons.get(editingHabit)?.edit;
+  const habit = habitButtons.get(editingHabit);
+  const edit = el.habits.classList.contains("is-editing") && habit && !habit.row.hidden && habit.edit;
   (edit || el["add-action"]).focus();
 });
 
 function playerLevel() {
   let level = 1;
   let xp = state.player.xp;
-  let needed = 20;
+  let needed = 200;
   while (level < maxPlayerLevel && xp >= needed) {
     xp -= needed;
     level++;
-    needed += 8;
+    needed += 80;
   }
   return { level, xp, needed };
 }
@@ -576,21 +698,36 @@ function updateControls() {
   const day = todayKey();
   displayedDay = day;
   updatePlayer();
-  const completed = new Set(state.entries.filter(entry => entry.date === day).map(entry => entry.kind));
+  const completed = new Map(state.entries.filter(entry => entry.date === day).map(entry => [entry.kind, entry]));
   let completedCount = 0;
+  let possibleReward = 0;
   for (const habit of state.habits) {
-    const { button, control } = habitButtons.get(habit.id);
-    const done = completed.has(habit.id);
+    const { button, rewardAmount } = habitButtons.get(habit.id);
+    const entry = completed.get(habit.id);
+    const done = Boolean(entry);
+    const reward = actionReward(entry ?? habit);
     if (done) completedCount++;
+    possibleReward += reward;
     button.setAttribute("aria-pressed", String(done));
     button.setAttribute("aria-label", habit.name);
+    button.setAttribute("aria-description", [actionCategories.get(habitCategory(habit)), habit.description, `${reward} 点生命力`].filter(Boolean).join("，"));
     button.title = done ? "取消完成" : "标记完成";
-    control.innerHTML = icon(done ? "check" : "plus");
+    rewardAmount.textContent = `+${reward}`;
   }
-  el["action-count"].textContent = `${completedCount} / ${state.habits.length}`;
+  const count = document.createElement("span");
+  count.textContent = completedCount;
+  el["action-count"].replaceChildren(count, ` / ${state.habits.length}`);
+  const progress = state.habits.length ? completedCount / state.habits.length : 0;
+  el["action-progress"].style.setProperty("--progress", `${progress * 100}%`);
+  for (const [index, leaf] of [...el["action-progress"].querySelectorAll("i")].entries()) {
+    leaf.classList.toggle("is-complete", index < Math.floor(progress * 5));
+  }
+  el["action-total"].textContent = `+${possibleReward}`;
+  el["action-streak"].textContent = dailyActionStreak(day);
+  el["action-bonus-copy"].classList.toggle("is-earned", completed.has(dailyActionBonus));
 
-  const balance = availableEnergy().length;
-  const pending = state.entries.filter(entry => !entry.collected).length;
+  const balance = availableEnergy();
+  const pending = state.entries.reduce((total, entry) => entry.collected ? total : total + actionReward(entry), 0);
   el.balance.textContent = balance;
   el["shop-balance"].textContent = balance;
   el["plant-balance"].textContent = balance;
@@ -601,16 +738,6 @@ function updateControls() {
   const hasSeedlings = state.seedlings.length > 0;
   const hasOpenSoil = [...el.plots.children].some(button => !button.disabled && !button.matches(".locked, .planted"));
   const canPlant = hasOpenSoil && (hasSeedlings || balance >= minimumPrice);
-  if (!hasOpenSoil) {
-    const next = nextExpansion();
-    el["guide-text"].textContent = next ? `已开放的田地种满了。点击田里的木牌查看 ${next.level} 级开垦条件。` : "田地种满了。可以收获成熟作物腾出地块。";
-  } else if (canPlant) {
-    el["guide-text"].textContent = hasSeedlings
-      ? "点一格空田，可以种下已购种苗。"
-      : "生命力已攒够。可以去商店买种苗，也可以点空田直接种植。";
-  } else {
-    el["guide-text"].textContent = `再收取 ${minimumPrice - balance} 点生命力，就能购买最便宜的种苗。`;
-  }
   const { level } = playerLevel();
   for (const [id, { card, buy, stock, choice, choicePrice }] of plantOptions) {
     const { name, price, unlockLevel } = plants.get(id);
@@ -727,25 +854,27 @@ function renderPlots(growingIndex = -1) {
 }
 
 function renderOrbs() {
-  const pending = state.entries.filter(entry => !entry.collected).slice(0, orbPositions.length);
+  const pending = state.entries.filter(entry => !entry.collected).slice(0, orbOffsets.length);
   for (const button of el.orbs.querySelectorAll(".orb:not(.fly)")) {
     if (!pending.some(entry => entry.id === button.dataset.entry)) button.remove();
   }
   for (const [index, entry] of pending.entries()) {
-    const [x, y] = orbPositions[index];
+    const [x, y] = orbOffsets[index];
     let button = [...el.orbs.children].find(orb => orb.dataset.entry === entry.id && !orb.classList.contains("fly"));
     if (!button) {
       button = document.createElement("button");
       button.type = "button";
       button.className = "orb";
       button.dataset.entry = entry.id;
-      button.innerHTML = icon("spark");
-      button.setAttribute("aria-label", "收取生命力 · " + actionRecordLabel(entry));
       button.addEventListener("click", () => collect(entry.id));
       el.orbs.append(button);
     }
-    button.style.setProperty("--x", `${x / sceneWidth * 100}%`);
-    button.style.setProperty("--y", `${y / sceneHeight * 100}%`);
+    const reward = actionReward(entry);
+    button.setAttribute("aria-label", `收取 ${reward} 点生命力 · ${actionRecordLabel(entry)}`);
+    button.title = `${reward} 点生命力`;
+    button.dataset.rewardTier = Math.min(reward, 3);
+    button.style.setProperty("--x", `calc(${orbCenter[0]}% + ${x} * var(--orb-spacing))`);
+    button.style.setProperty("--y", `calc(${orbCenter[1]}% + ${y} * var(--orb-spacing))`);
   }
 }
 
@@ -763,20 +892,29 @@ function toggleActionCompletion(kind) {
 
   const status = el["action-status"];
   const entry = state.entries[index];
-  if (spentEnergyIds().has(entry.id)) {
+  const spent = spentEnergyIds();
+  if ([...spent].some(id => energyEntryId(id) === entry.id)) {
     status.textContent = "❌这项行动的生命力已花费，无法取消完成。";
     return;
   }
 
-  state.entries.splice(index, 1);
+  const today = state.entries.filter(item => item.date === date && item.kind !== dailyActionBonus && item.kind !== "sample");
+  const bonus = today.length <= dailyActionGoal && state.entries.find(item => item.date === date && item.kind === dailyActionBonus);
+  if (bonus && spent.has(bonus.id)) {
+    status.textContent = "今日达成奖励已花费，取消这项行动会低于 5 项，无法撤销。";
+    return;
+  }
+  const previous = state.entries;
+  state.entries = previous.filter(item => item !== entry && item !== bonus);
   if (!saveState()) {
-    state.entries.splice(index, 0, entry);
+    state.entries = previous;
     status.textContent = "浏览器无法保存，取消完成失败。";
     return;
   }
   renderOrbs();
   updateControls();
-  status.textContent = entry.collected ? "已取消完成，扣回 1 点生命力。" : "已取消完成，待领取的生命力已撤回。";
+  const deducted = (entry.collected ? actionReward(entry) : 0) + (bonus?.collected ? 1 : 0);
+  status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
 }
 
 function record(kind) {
@@ -785,15 +923,25 @@ function record(kind) {
   const habit = state.habits.find(habit => habit.id === kind);
   if (!habit || state.entries.some(entry => entry.id === id)) return;
   const actionLabel = habit.description ? `${habit.name} · ${habit.description}` : habit.name;
-  state.entries.push({ id, date, kind, actionLabel, collected: false });
-  saveState();
+  const reward = actionReward(habit);
+  const previousLength = state.entries.length;
+  state.entries.push({ id, date, kind, actionLabel, reward, collected: false });
+  const today = state.entries.filter(entry => entry.date === date);
+  const earnedBonus = today.filter(entry => entry.kind !== dailyActionBonus && entry.kind !== "sample").length >= dailyActionGoal
+    && !today.some(entry => entry.kind === dailyActionBonus);
+  if (earnedBonus) {
+    state.entries.push({ id: `${date}:${dailyActionBonus}`, date, kind: dailyActionBonus, actionLabel: "今日完成 5 项行动奖励", reward: 1, collected: false });
+  }
+  if (!saveState()) {
+    state.entries.length = previousLength;
+    el["action-status"].textContent = "浏览器无法保存，标记完成失败。";
+    return;
+  }
   renderOrbs();
   updateControls();
-  el.actions.close();
-  const [orbX, orbY] = orbPositions[0];
-  cameraTo(orbX, true, orbY);
-  notify("泉边出现了一颗生命力光球");
-  el["collect-life"].focus({ preventScroll: true });
+  el["action-status"].textContent = earnedBonus
+    ? `已完成 ${dailyActionGoal} 项行动，额外获得 1 点待领取生命力。`
+    : `已标记完成，${reward} 点生命力可在家门口领取。`;
 }
 
 function animateCollection(entries) {
@@ -813,19 +961,24 @@ function animateCollection(entries) {
 function collect(id) {
   const entries = state.entries.filter(entry => !entry.collected && (!id || entry.id === id));
   if (!entries.length) return;
-  animateCollection(entries);
   for (const entry of entries) entry.collected = true;
-  saveState();
+  if (!saveState()) {
+    for (const entry of entries) entry.collected = false;
+    notify("浏览器无法保存，收取生命力失败。");
+    return;
+  }
+  animateCollection(entries);
   renderOrbs();
   updateControls();
-  notify(`收到了 ${entries.length} 点生命力`);
+  const reward = entries.reduce((total, entry) => total + actionReward(entry), 0);
+  notify(`收到了 ${reward} 点生命力`);
   const focusTarget = el["collect-life"].disabled ? el["open-actions"] : el["collect-life"];
   focusTarget.focus({ preventScroll: true });
 }
 
 function showPlantPicker(index) {
   if (!isOpenPlot(index)) return;
-  if (!state.seedlings.length && availableEnergy().length < minimumPrice) {
+  if (!state.seedlings.length && availableEnergy() < minimumPrice) {
     notify(`种植至少需要 ${minimumPrice} 点生命力`);
     return;
   }
@@ -839,12 +992,12 @@ function buySeedling(id) {
     el["shop-status"].textContent = `${species.name}将在 ${species.unlockLevel} 级解锁。`;
     return;
   }
-  const energy = availableEnergy().slice(0, species.price);
-  if (energy.length < species.price) {
+  const energyIds = availableEnergyIds(species.price);
+  if (energyIds.length < species.price) {
     el["shop-status"].textContent = "生命力不足。";
     return;
   }
-  state.seedlings.push({ species: id, energyIds: energy.map(entry => entry.id) });
+  state.seedlings.push({ species: id, energyIds });
   saveState();
   updateControls();
   el["shop-status"].textContent = `已购入 1 株${species.name}种苗。点空地即可种植。`;
@@ -852,12 +1005,12 @@ function buySeedling(id) {
 
 function buyFertilizer(id) {
   const fertilizer = fertilizers.get(id);
-  const energy = availableEnergy().slice(0, fertilizer.price);
-  if (energy.length < fertilizer.price) {
+  const energyIds = availableEnergyIds(fertilizer.price);
+  if (energyIds.length < fertilizer.price) {
     el["shop-status"].textContent = "生命力不足。";
     return;
   }
-  state.fertilizerPurchases.push({ id, energyIds: energy.map(entry => entry.id) });
+  state.fertilizerPurchases.push({ id, energyIds });
   saveState();
   updateControls();
   el["shop-status"].textContent = `已购入 1 袋${fertilizer.name}。点开未成熟的植物即可施用。`;
@@ -910,12 +1063,11 @@ function plant(index, species) {
       notify(`${name}将在 ${unlockLevel} 级解锁。`);
       return;
     }
-    const energy = availableEnergy().slice(0, price);
-    if (energy.length < price) {
+    energyIds = availableEnergyIds(price);
+    if (energyIds.length < price) {
       notify(`种植${name}需要 ${price} 点生命力`);
       return;
     }
-    energyIds = energy.map(entry => entry.id);
   }
   state.trees.push({
     plot: index, species, date: todayKey(), plantedAt: Date.now(),
@@ -931,45 +1083,85 @@ function plant(index, species) {
 function showJournal(tree) {
   const content = el["journal-content"];
   journalPlot = tree?.plot;
+  el.journal.dataset.view = tree ? "crop" : "history";
+  el["journal-kicker"].hidden = !tree;
+  el["journal-records-title"].textContent = tree ? "行动来源" : "行动记录";
   el["fertilizer-panel"].hidden = !tree;
   el["fertilizer-status"].textContent = "";
   content.replaceChildren();
   if (tree) {
-    const image = document.createElement("img");
-    image.alt = "";
-    image.className = "dialog-plant";
-    content.append(image);
     const now = Date.now();
     el["journal-title"].textContent = plantAppearance(tree, now).name;
     updateJournalGrowth(tree, now);
   } else {
     el["journal-title"].textContent = "森林手记";
-    el["journal-kicker"].textContent = "我的行动";
+    el["journal-cover-art"].src = "./assets/forest-journal.webp";
   }
+  const sourceIds = tree && new Set(tree.energyIds.map(energyEntryId));
   const entries = tree
-    ? state.entries.filter(entry => tree.energyIds.includes(entry.id))
+    ? state.entries.filter(entry => sourceIds.has(entry.id))
     : state.entries.filter(entry => entry.kind !== "sample").reverse();
-  if (entries.length) {
+  el["journal-count"].textContent = `${entries.length} 条记录`;
+  el["journal-count"].hidden = entries.length === 0;
+  renderJournalRecords(content, entries, Boolean(tree));
+  el.journal.showModal();
+  el.journal.scrollTop = 0;
+  content.scrollTop = 0;
+}
+
+function renderJournalRecords(content, entries, isCrop) {
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "journal-empty";
+    const sprout = document.createElement("img");
+    sprout.src = "./assets/warehouse/sprout-tag.webp";
+    sprout.alt = "";
+    const message = document.createElement("p");
+    message.textContent = isCrop ? "这株作物没有关联的行动记录。" : "完成一项今日行动，就会在这里留下记录。";
+    empty.append(sprout, message);
+    if (!isCrop) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "journal-start";
+      button.textContent = "去今日行动";
+      button.addEventListener("click", () => {
+        el.journal.close();
+        if (!el.actions.open) showActions();
+      });
+      empty.append(button);
+    }
+    content.append(empty);
+    return;
+  }
+
+  const entriesByDate = new Map();
+  for (const entry of entries) {
+    const date = entry.date ?? "";
+    if (!entriesByDate.has(date)) entriesByDate.set(date, []);
+    entriesByDate.get(date).push(entry);
+  }
+  const currentYear = todayKey().slice(0, 4);
+  for (const [date, records] of [...entriesByDate].sort(([a], [b]) => b.localeCompare(a))) {
+    const heading = document.createElement("h4");
+    heading.className = "journal-date";
+    if (date) {
+      const time = document.createElement("time");
+      time.dateTime = date;
+      const year = date.slice(0, 4);
+      time.textContent = year === currentYear ? formatDate(date) : `${year}年${formatDate(date)}`;
+      heading.append(time);
+    } else {
+      heading.textContent = "体验版赠送";
+    }
     const list = document.createElement("ul");
     list.className = "journal-list";
-    for (const entry of entries) {
+    for (const entry of records) {
       const item = document.createElement("li");
-      const label = document.createElement("span");
-      const detail = document.createElement(entry.date ? "time" : "span");
-      label.textContent = actionRecordLabel(entry);
-      if (entry.date) detail.dateTime = entry.date;
-      detail.textContent = entry.date ? formatDate(entry.date) : "体验版赠送";
-      item.append(label, detail);
+      item.textContent = actionRecordLabel(entry);
       list.append(item);
     }
-    content.append(list);
-  } else {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "记录的行动会出现在这里。";
-    content.append(empty);
+    content.append(heading, list);
   }
-  el.journal.showModal();
 }
 
 function selectTool(id) {
@@ -1297,11 +1489,25 @@ for (const id of fieldTools.keys()) {
   el["tool-" + id].addEventListener("click", () => selectTool(id));
 }
 el["open-toolbox"].addEventListener("click", () => el.toolbox.showModal());
-el["open-background-music"].addEventListener("click", () => el["background-music"].showModal());
-
+el["open-life-transfer"].addEventListener("click", () => el["life-transfer"].showModal());
+el["life-transfer-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  if (!event.submitter) return;
+  const hasMessage = el["life-transfer-message"].value.trim().length > 0;
+  el["life-transfer-status"].textContent = `预览 · 已试传 ${event.submitter.value} 点生命力${hasMessage ? "，附有留言" : ""}`;
+});
 const musicFile = el["music-file"];
 const musicPlayer = el["music-player"];
 const musicStatus = el["music-status"];
+el["open-background-music"].addEventListener("click", () => {
+  el["background-music"].showModal();
+  musicPlayer.play().catch(error => {
+    if (error.name === "AbortError" || musicPlayer.error) return;
+    musicStatus.textContent = "未能开始播放，请点播放器的播放按钮重试。";
+    musicStatus.hidden = false;
+  });
+});
+musicPlayer.addEventListener("playing", () => { musicStatus.hidden = true; });
 el["choose-music"].addEventListener("click", () => musicFile.click());
 musicFile.addEventListener("change", () => {
   const file = musicFile.files[0];
@@ -1313,7 +1519,7 @@ musicFile.addEventListener("change", () => {
     musicStatus.hidden = false;
     return;
   }
-  if (musicPlayer.src) URL.revokeObjectURL(musicPlayer.src);
+  if (musicPlayer.src.startsWith("blob:")) URL.revokeObjectURL(musicPlayer.src);
   musicPlayer.src = URL.createObjectURL(file);
   musicPlayer.hidden = false;
   el["music-track"].textContent = file.name;
