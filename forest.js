@@ -13,6 +13,7 @@ const actionCategories = new Map([
 ]);
 const dailyActionGoal = 5;
 const dailyActionBonus = "daily-action-bonus";
+const whaleMoodBonus = "whale-mood-bonus";
 // The old IDs are needed to keep existing crops on the same tile where possible.
 const legacyPlots = [[2, 2], [3, 1], [1, 3], [4, 2], [2, 4]];
 for (const [rows, columns] of [[5, 5], [6, 7]]) {
@@ -55,12 +56,12 @@ let sceneZoom = 1;
 const orbCenter = [74.2, 50.2];
 const orbOffsets = [[-1, -.5], [0, -.5], [1, -.5], [-.5, .5], [.5, .5]];
 const plants = new Map([
-  ["fir", { name: "小杉树", unlockLevel: 10, emoji: "🌲", sprite: "./assets/island-fir.webp", height: 170, price: 6, maturity: 90, xp: 138, gold: 14 }],
+  ["fir", { name: "小杉树", unlockLevel: 10, sprite: "./assets/island-fir.webp", height: 170, price: 6, maturity: 90, xp: 138, gold: 14 }],
   ["sunflower", { name: "向日葵", unlockLevel: 15, sprite: "./assets/sunflower.webp", height: 122, price: 8, maturity: 105, xp: 192, gold: 18 }],
   ["banana", { name: "香蕉树", unlockLevel: 20, sprite: "./assets/banana-original-two-bunches.webp", height: 170, price: 10, maturity: 135, xp: 250, gold: 25 }],
   ["cherry", { name: "樱花树", unlockLevel: 25, sprite: "./assets/cherry.webp", height: 155, price: 12, maturity: 165, xp: 312, gold: 34 }],
-  ["reeds", { name: "芦苇", unlockLevel: 5, sprite: "./assets/reeds.webp", height: 111, price: 4, maturity: 75, xp: 88, gold: 11 }],
-  ["rice", { name: "水稻", unlockLevel: 1, sprite: "./assets/rice.webp", height: 86, price: 2, maturity: 60, xp: 42, gold: 8 }],
+  ["reeds", { name: "芦苇", unlockLevel: 5, sprite: "./assets/reeds.webp", height: 111, matureScale: 1.25, price: 4, maturity: 75, xp: 88, gold: 11 }],
+  ["rice", { name: "水稻", unlockLevel: 1, sprite: "./assets/rice.webp", height: 86, matureScale: 1.4, price: 2, maturity: 60, xp: 42, gold: 8 }],
 ]);
 const growthStages = [
   { label: "成熟期", ratio: 1, scale: 1 },
@@ -76,7 +77,7 @@ const maxPlayerLevel = 100;
 const waterBoost = 10;
 const fieldTools = new Map([
   ["dig", { artwork: "dig", followsPointer: true, hint: "选择一株植物，再确认是否清除。" }],
-  ["water", { hint: `点一株未成熟的植物。每株可浇水一次，增加 ${waterBoost} 点生长值。` }],
+  ["water", { artwork: "water", followsPointer: true, hint: `点一株未成熟的植物。每株可浇水一次，增加 ${waterBoost} 点生长值。` }],
   ["harvest", { artwork: "harvest-hand", followsPointer: true, hint: "点一株成熟的植物，获得经验并将作物放入仓库。" }],
 ]);
 const fertilizers = new Map([
@@ -89,6 +90,7 @@ const storageKey = "life-forest-v2";
 const demoStorageKey = "life-forest-demo-v1";
 const defaultAvatar = "./assets/growth/fir-seedling.webp";
 const shortDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
+const calendarMonthFormat = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", timeZone: "UTC" });
 const el = Object.fromEntries([...document.querySelectorAll("[id]")].map(node => [node.id, node]));
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let selectedPlot;
@@ -96,6 +98,9 @@ let journalPlot;
 let activeTool;
 let pendingDig;
 let previewPlot;
+let previewOrb;
+let calendarDate;
+let calendarMonth;
 
 function restoreWaitingCrops(save) {
   const occupied = new Set(save.trees.map(tree => tree.plot));
@@ -141,7 +146,7 @@ function maturityTarget(tree) {
 function growthProgress(tree, now) {
   const target = maturityTarget(tree);
   // Older saves already displayed these plants at full size.
-  if (!Number.isFinite(tree.plantedAt)) return { target, progress: target, remaining: 0 };
+  if (tree.forcedMature || !Number.isFinite(tree.plantedAt)) return { target, progress: target, remaining: 0 };
   const interval = tree.growthInterval ?? 1000;
   const boost = (tree.fertilizerBoost ?? 0) + (tree.waterBoost ?? 0);
   const elapsed = Math.max(0, now - tree.plantedAt);
@@ -168,7 +173,10 @@ function updateCropTooltip(now = Date.now()) {
   const status = remaining ? `距成熟 ${countdown}` : "已成熟，可收获";
   if (time.textContent !== status) time.textContent = status;
   const species = plants.get(speciesId(tree));
-  el["crop-tooltip-name"].textContent = species.emoji ? `${species.emoji} ${species.name}` : species.name;
+  const name = el["crop-tooltip-name"];
+  const artwork = el["crop-tooltip-art"];
+  if (name.textContent !== species.name) name.textContent = species.name;
+  if (artwork.getAttribute("src") !== species.sprite) artwork.src = species.sprite;
   const meter = el["crop-tooltip-progress"];
   meter.max = target;
   meter.value = progress;
@@ -194,17 +202,66 @@ function previewCrop(button) {
   updateCropTooltip();
 }
 
+function updateOrbTooltip() {
+  const tooltip = el["orb-tooltip"];
+  const entry = previewOrb && state.entries.find(item => item.id === previewOrb.dataset.entry);
+  if (!previewOrb?.isConnected || previewOrb.disabled || !entry || entry.collected) {
+    previewOrb?.removeAttribute("aria-describedby");
+    previewOrb = undefined;
+    tooltip.hidden = true;
+    return;
+  }
+
+  const orb = previewOrb.getBoundingClientRect();
+  const world = el.forest.getBoundingClientRect();
+  if (orb.right <= world.left || orb.left >= world.right || orb.bottom <= world.top || orb.top >= world.bottom) {
+    tooltip.hidden = true;
+    return;
+  }
+
+  const reward = actionReward(entry);
+  const amount = `+${reward}`;
+  const reason = entry.kind === whaleMoodBonus ? "今天鲸鱼娘很开心" : orbActionName(entry);
+  tooltip.setAttribute("aria-label", `生命力 ${amount}。${reason}`);
+  tooltip.toggleAttribute("data-custom-amount", reward !== 2);
+  el["orb-tooltip-amount"].textContent = amount;
+  el["orb-tooltip-amount"].style.setProperty("--amount-length", amount.length);
+  el["orb-tooltip-reason"].textContent = reason;
+  tooltip.hidden = false;
+  const centerX = (orb.left + orb.right) / 2 - world.left;
+  const centerY = (orb.top + orb.bottom) / 2 - world.top;
+  const artWidth = parseFloat(getComputedStyle(previewOrb, "::before").width) * sceneZoom;
+  // The sun spans 69% of its sprite; enlarge the reference card ratio by 25%.
+  tooltip.style.width = `${artWidth * .69 * 2.35 * 1.25}px`;
+  const gap = artWidth * .45;
+  const edge = 8;
+  const { offsetWidth: width, offsetHeight: height } = tooltip;
+  const left = Math.max(edge, Math.min(centerX - width / 2, world.width - width - edge));
+  const above = centerY - gap - height;
+  const top = above < edge ? Math.min(centerY + gap, world.height - height - edge) : above;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.max(edge, top)}px`;
+}
+
+function showOrbTooltip(button) {
+  previewOrb?.removeAttribute("aria-describedby");
+  previewOrb = button;
+  previewOrb?.setAttribute("aria-describedby", "orb-tooltip");
+  updateOrbTooltip();
+}
+
 function plantAppearance(tree, now) {
   const id = speciesId(tree);
   const species = plants.get(id);
   const points = growthPoints(tree, now);
   const stage = growthStages.find(candidate => points >= Math.ceil(maturityTarget(tree) * candidate.ratio));
+  const scale = stage.ratio === 1 ? (species.matureScale ?? stage.scale) : stage.scale;
   return {
     name: species.name,
     label: stage.label,
     sprite: stage.asset ? `./assets/growth/${id}-${stage.asset}.webp` : species.sprite,
-    height: species.height * stage.scale,
-    width: 62 * stage.scale,
+    height: species.height * scale,
+    width: 62 * scale,
   };
 }
 
@@ -265,12 +322,31 @@ function startingState() {
   };
 }
 
+function pruneActionEntries(entries, habits) {
+  const activeIds = new Set(habits.map(habit => habit.id));
+  const remaining = entries.filter(entry => activeIds.has(entry.kind) || [dailyActionBonus, whaleMoodBonus, "sample"].includes(entry.kind));
+  const totals = dailyActionTotals(remaining);
+  return remaining.filter(entry => entry.kind !== dailyActionBonus || (totals.get(entry.date) ?? 0) >= dailyActionGoal);
+}
+
+const forestSave = createForestSaveSync({
+  legacyKey: storageKey,
+  storage: {
+    getItem: key => localStorage.getItem(key),
+    setItem: (key, data) => localStorage.setItem(key, data),
+  },
+  onChange: refreshSavedForest,
+  onStatus: updateForestSyncStatus,
+});
+
 function readState() {
   try {
     // Discard playtest saves without affecting progress made after the reset.
     localStorage.removeItem(demoStorageKey);
-    const saved = JSON.parse(localStorage.getItem(storageKey));
+    const saved = forestSave.read();
     if (saved && Array.isArray(saved.entries) && Array.isArray(saved.trees)) {
+      const habits = Array.isArray(saved.habits) ? saved.habits : initialHabits();
+      const entries = pruneActionEntries(saved.entries, habits);
       const player = { ...startingState().player, ...saved.player };
       // Scale legacy XP once so the new thresholds preserve existing progress.
       if (saved.player?.xpScale !== 10) {
@@ -280,7 +356,8 @@ function readState() {
       return {
         ...saved,
         ...migrateField(saved),
-        habits: Array.isArray(saved.habits) ? saved.habits : initialHabits(),
+        habits,
+        entries,
         seedlings: Array.isArray(saved.seedlings) ? saved.seedlings : [],
         fertilizerPurchases: Array.isArray(saved.fertilizerPurchases) ? saved.fertilizerPurchases : [],
         spentPlantEnergyIds: Array.isArray(saved.spentPlantEnergyIds) ? saved.spentPlantEnergyIds : [],
@@ -300,12 +377,33 @@ let displayedDay;
 
 function saveState() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify(state));
+    forestSave.write(state);
     return true;
   } catch {
     el["storage-note"].textContent = "体验版 · 当前浏览器无法保存，记录仅在本次打开时有效";
     return false;
   }
+}
+
+function updateForestSyncStatus(status) {
+  const messages = {
+    guest: "",
+    connecting: "正在读取云端存档…",
+    pending: "已保存在此设备，正在上传…",
+    synced: "游戏存档已同步。",
+    offline: "当前离线，联网后会自动同步。",
+    unavailable: "暂时无法同步，改动已保存在此设备。",
+    "too-large": "存档超过云端同步大小限制，已保存在此设备。",
+    storage: "浏览器存储不可用，暂时无法同步。",
+    conflict: "此设备和云端都有不同的进度。选择保留哪份存档，另一份会备份到此浏览器。",
+    "conflict-storage": "浏览器空间不足，未能备份存档。请腾出空间后再选择。",
+  };
+  const conflict = status === "conflict" || status === "conflict-storage";
+  el["account-sync-status"].textContent = messages[status];
+  el["account-sync-choices"].hidden = !conflict;
+  el["account-sync-retry"].hidden = !["unavailable", "offline", "storage"].includes(status);
+  el["player-login-status"].textContent = conflict ? "存档冲突" : "已登录";
+  el["storage-note"].textContent = messages[status] || "行动、植物与库存保存在此浏览器";
 }
 
 function icon(name) {
@@ -321,6 +419,62 @@ function cameraTo(x, smooth = true, y) {
     behavior: smooth && !reduceMotion.matches ? "smooth" : "instant",
   });
 }
+
+let cameraPan;
+let suppressPanClick = false;
+
+window.addEventListener("pointerdown", event => {
+  if (event.pointerType === "mouse" && event.button === 0) suppressPanClick = false;
+}, { capture: true });
+
+el.camera.addEventListener("pointerdown", event => {
+  if (event.pointerType !== "mouse" || event.button !== 0 || sceneZoom <= 1) return;
+  cameraPan = {
+    id: event.pointerId,
+    x: event.clientX, y: event.clientY,
+    left: el.camera.scrollLeft, top: el.camera.scrollTop,
+    dragging: false,
+  };
+});
+
+window.addEventListener("pointermove", event => {
+  if (event.pointerId !== cameraPan?.id || !(event.buttons & 1)) return;
+  const dx = event.clientX - cameraPan.x;
+  const dy = event.clientY - cameraPan.y;
+  if (!cameraPan.dragging) {
+    if (Math.hypot(dx, dy) < 5) return;
+    cameraPan.dragging = true;
+    suppressPanClick = true;
+    el.camera.setPointerCapture(event.pointerId);
+    el.camera.classList.add("is-panning");
+    previewCrop(null);
+    showOrbTooltip(null);
+    hideToolCursor();
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  el.camera.scrollTo({ left: cameraPan.left - dx, top: cameraPan.top - dy, behavior: "instant" });
+}, { capture: true, passive: false });
+
+function endCameraPan(event) {
+  if (!cameraPan || (event.type !== "blur" && event.pointerId !== cameraPan.id)) return;
+  cameraPan = undefined;
+  el.camera.classList.remove("is-panning");
+}
+
+window.addEventListener("pointerup", endCameraPan, { capture: true });
+window.addEventListener("pointercancel", endCameraPan, { capture: true });
+window.addEventListener("blur", endCameraPan);
+el.camera.addEventListener("lostpointercapture", endCameraPan);
+el.camera.addEventListener("dragstart", event => {
+  if (cameraPan) event.preventDefault();
+});
+window.addEventListener("click", event => {
+  if (!suppressPanClick || !event.detail) return;
+  suppressPanClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+}, { capture: true });
 
 el.camera.addEventListener("wheel", event => {
   if (event.ctrlKey || event.metaKey || !event.deltaY) return;
@@ -339,12 +493,16 @@ el.camera.addEventListener("wheel", event => {
   el.camera.style.setProperty("--scene-zoom", zoom);
   el.camera.scrollTo({ left, top, behavior: "instant" });
   sceneZoom = zoom;
+  el.camera.classList.toggle("is-zoomed", zoom > 1);
+  if (previewOrb) updateOrbTooltip();
 }, { passive: false });
 el.camera.addEventListener("scroll", () => {
   if (previewPlot) updateCropTooltip();
+  if (previewOrb) updateOrbTooltip();
 });
 window.addEventListener("resize", () => {
   if (previewPlot) updateCropTooltip();
+  if (previewOrb) updateOrbTooltip();
 });
 
 el.plots.addEventListener("pointermove", event => {
@@ -368,11 +526,16 @@ function showActions() {
   el.actions.showModal();
 }
 
-function dailyActionStreak(day) {
+function dailyActionTotals(entries) {
   const totals = new Map();
-  for (const { date, kind } of state.entries) {
-    if (date && kind !== dailyActionBonus && kind !== "sample") totals.set(date, (totals.get(date) ?? 0) + 1);
+  for (const { date, kind } of entries) {
+    if (date && ![dailyActionBonus, whaleMoodBonus, "sample"].includes(kind)) totals.set(date, (totals.get(date) ?? 0) + 1);
   }
+  return totals;
+}
+
+function dailyActionStreak(day) {
+  const totals = dailyActionTotals(state.entries);
   const cursor = new Date(`${day}T00:00:00Z`);
   if ((totals.get(day) ?? 0) < dailyActionGoal) cursor.setUTCDate(cursor.getUTCDate() - 1);
   let streak = 0;
@@ -381,6 +544,87 @@ function dailyActionStreak(day) {
     cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
   return streak;
+}
+
+function renderActionCalendar() {
+  const today = todayKey();
+  const focused = document.activeElement;
+  let nextFocus;
+  const totals = dailyActionTotals(state.entries);
+  const days = [];
+  const date = new Date(calendarMonth);
+  const month = date.getUTCMonth();
+  const leadingDays = (date.getUTCDay() + 6) % 7;
+  for (let i = 0; i < leadingDays; i++) days.push(document.createElement("span"));
+  while (date.getUTCMonth() === month) {
+    const key = date.toISOString().slice(0, 10);
+    const completed = totals.get(key) ?? 0;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = date.getUTCDate();
+    button.dataset.calendarDate = key;
+    button.disabled = key > today;
+    button.setAttribute("aria-label", `${key}，已完成 ${completed} 项行动`);
+    button.setAttribute("aria-pressed", String(key === calendarDate));
+    if (key === today) button.setAttribute("aria-current", "date");
+    if (completed) button.dataset.progress = completed >= dailyActionGoal ? "complete" : "partial";
+    if (focused?.dataset.calendarDate === key) nextFocus = button;
+    button.addEventListener("click", () => {
+      calendarDate = key;
+      el["action-calendar-status"].textContent = "";
+      renderActionCalendar();
+    });
+    days.push(button);
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  el["action-calendar-days"].replaceChildren(...days);
+  el["action-calendar-month"].textContent = calendarMonthFormat.format(calendarMonth);
+  el["action-calendar-next"].disabled = calendarMonth.toISOString().slice(0, 7) >= today.slice(0, 7);
+  el["action-calendar-date"].textContent = `${calendarDate.slice(0, 4)}年${formatDate(calendarDate)}`;
+  el["action-calendar-count"].textContent = `已完成 ${totals.get(calendarDate) ?? 0} / ${state.habits.length}`;
+
+  const completed = new Map(state.entries.filter(entry => entry.date === calendarDate).map(entry => [entry.kind, entry]));
+  const habits = state.habits.map(habit => {
+    const entry = completed.get(habit.id);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.calendarHabit = habit.id;
+    button.setAttribute("aria-pressed", String(Boolean(entry)));
+    const name = document.createElement("strong");
+    name.textContent = habit.name;
+    const label = document.createElement("span");
+    label.textContent = entry?.source === "finance-link" ? "自动完成" : entry ? "已完成" : `+${actionReward(habit)} 标记完成`;
+    button.append(name, label);
+    button.addEventListener("click", () => toggleActionCompletion(habit.id, calendarDate, el["action-calendar-status"]));
+    if (focused?.dataset.calendarHabit === habit.id) nextFocus = button;
+    return button;
+  });
+  if (!habits.length) {
+    const empty = document.createElement("p");
+    empty.className = "guide";
+    empty.textContent = "还没有可标记的行动。";
+    habits.push(empty);
+  }
+  el["action-calendar-habits"].replaceChildren(...habits);
+  nextFocus?.focus({ preventScroll: true });
+}
+
+el["open-action-calendar"].addEventListener("click", () => {
+  const yesterday = new Date(`${todayKey()}T00:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  calendarDate = yesterday.toISOString().slice(0, 10);
+  yesterday.setUTCDate(1);
+  calendarMonth = yesterday;
+  el["action-calendar-status"].textContent = "";
+  renderActionCalendar();
+  el["action-calendar-dialog"].showModal();
+  el["action-calendar-days"].querySelector('[aria-pressed="true"]')?.focus();
+});
+for (const [id, step] of [["action-calendar-prev", -1], ["action-calendar-next", 1]]) {
+  el[id].addEventListener("click", () => {
+    calendarMonth.setUTCMonth(calendarMonth.getUTCMonth() + step);
+    renderActionCalendar();
+  });
 }
 
 function spentEnergyIds() {
@@ -397,31 +641,68 @@ function energyEntryId(id) {
   return id.split("#", 1)[0];
 }
 
-function availableEnergy() {
+function countSpentEnergyByEntry(spent) {
   const spentByEntry = new Map();
-  for (const id of spentEnergyIds()) {
+  for (const id of spent) {
     const entryId = energyEntryId(id);
     spentByEntry.set(entryId, (spentByEntry.get(entryId) ?? 0) + 1);
   }
-  return state.entries.reduce((total, entry) => entry.collected
-    ? total + (actionReward(entry) - (spentByEntry.get(entry.id) ?? 0))
-    : total, 0);
+  return spentByEntry;
+}
+
+function remainingEntryEnergy(entry, spentByEntry) {
+  if (!entry.collected) return 0;
+  return Math.max(0, actionReward(entry) - (spentByEntry.get(entry.id) ?? 0) - (entry.withheldEnergy ?? 0));
+}
+
+function availableEnergy() {
+  const spentByEntry = countSpentEnergyByEntry(spentEnergyIds());
+  return state.entries.reduce((total, entry) => total + remainingEntryEnergy(entry, spentByEntry), 0);
 }
 
 function availableEnergyIds(amount) {
   const spent = spentEnergyIds();
+  const spentByEntry = countSpentEnergyByEntry(spent);
   const ids = [];
   for (const entry of state.entries) {
-    if (!entry.collected) continue;
-    const reward = actionReward(entry);
-    for (let point = 0; point < reward; point++) {
+    let remaining = remainingEntryEnergy(entry, spentByEntry);
+    for (let point = 0; remaining > 0 && ids.length < amount; point++) {
       const id = point === 0 ? entry.id : `${entry.id}#${point}`;
       if (spent.has(id)) continue;
       ids.push(id);
-      if (ids.length === amount) return ids;
+      remaining--;
     }
+    if (ids.length === amount) break;
   }
   return ids;
+}
+
+function setAvailableEnergy(target) {
+  const previousEntries = state.entries;
+  const spentByEntry = countSpentEnergyByEntry(spentEnergyIds());
+  const balance = previousEntries.reduce((total, entry) => total + remainingEntryEnergy(entry, spentByEntry), 0);
+  if (target === balance) return true;
+
+  if (target > balance) {
+    const id = crypto.randomUUID?.() ?? `energy-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
+    state.entries = [...previousEntries, { id, kind: "sample", actionLabel: "神之一手", reward: target - balance, collected: true }];
+  } else {
+    let withdrawal = balance - target;
+    const entries = [...previousEntries];
+    // Only remove unspent points, leaving IDs already linked to crops and purchases intact.
+    for (let index = entries.length - 1; withdrawal > 0 && index >= 0; index--) {
+      const entry = entries[index];
+      const amount = Math.min(withdrawal, remainingEntryEnergy(entry, spentByEntry));
+      if (!amount) continue;
+      entries[index] = { ...entry, withheldEnergy: (entry.withheldEnergy ?? 0) + amount };
+      withdrawal -= amount;
+    }
+    state.entries = entries;
+  }
+
+  if (saveState()) return true;
+  state.entries = previousEntries;
+  return false;
 }
 
 function notify(message) {
@@ -552,15 +833,19 @@ function openActionEditor(id) {
   el["action-name"].focus();
 }
 
-function saveHabits(habits) {
-  const previous = state.habits;
+function saveHabits(habits, entries = state.entries) {
+  const previousHabits = state.habits;
+  const previousEntries = state.entries;
   state.habits = habits;
+  state.entries = entries;
   if (!saveState()) {
-    state.habits = previous;
+    state.habits = previousHabits;
+    state.entries = previousEntries;
     el["action-editor-status"].textContent = "浏览器无法保存此次修改。";
     return false;
   }
   renderHabits();
+  if (entries !== previousEntries) renderOrbs();
   updateControls();
   return true;
 }
@@ -616,7 +901,7 @@ el["action-editor-form"].addEventListener("submit", event => {
 el["delete-action"].addEventListener("click", () => {
   const habit = state.habits.find(item => item.id === editingHabit);
   if (!habit) return;
-  el["action-delete-message"].textContent = `删除「${habit.name}」？已记录的行动和生命力会保留。`;
+  el["action-delete-message"].textContent = `删除「${habit.name}」？相关记录、待领取和未花费的生命力会一起移除。删除后未达标的额外奖励也会撤回。`;
   el["action-editor-form"].hidden = true;
   el["action-delete-confirm"].hidden = false;
   el["action-editor-status"].textContent = "";
@@ -629,7 +914,10 @@ el["cancel-action-delete"].addEventListener("click", () => {
   el["delete-action"].focus();
 });
 el["confirm-action-delete"].addEventListener("click", () => {
-  if (saveHabits(state.habits.filter(habit => habit.id !== editingHabit))) el["action-editor"].close();
+  const habits = state.habits.filter(habit => habit.id !== editingHabit);
+  if (!saveHabits(habits, pruneActionEntries(state.entries, habits))) return;
+  el["action-status"].textContent = "已删除行动及相关记录。";
+  el["action-editor"].close();
 });
 el["action-editor"].addEventListener("close", () => {
   if (!el.actions.open) return;
@@ -648,6 +936,10 @@ function playerLevel() {
     needed += 80;
   }
   return { level, xp, needed };
+}
+
+function isPlantUnlocked(unlockLevel, level = playerLevel().level) {
+  return state.allPlantsUnlocked === true || level >= unlockLevel;
 }
 
 function updatePlayer() {
@@ -711,7 +1003,7 @@ function updateControls() {
     button.setAttribute("aria-pressed", String(done));
     button.setAttribute("aria-label", habit.name);
     button.setAttribute("aria-description", [actionCategories.get(habitCategory(habit)), habit.description, `${reward} 点生命力`].filter(Boolean).join("，"));
-    button.title = done ? "取消完成" : "标记完成";
+    button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成" : done ? "取消完成" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
   }
   const count = document.createElement("span");
@@ -723,8 +1015,11 @@ function updateControls() {
     leaf.classList.toggle("is-complete", index < Math.floor(progress * 5));
   }
   el["action-total"].textContent = `+${possibleReward}`;
-  el["action-streak"].textContent = dailyActionStreak(day);
+  const streak = dailyActionStreak(day);
+  el["action-streak"].textContent = streak;
+  el["open-action-calendar"].setAttribute("aria-description", `连续完成 ${streak} 天`);
   el["action-bonus-copy"].classList.toggle("is-earned", completed.has(dailyActionBonus));
+  if (el["action-calendar-dialog"].open) renderActionCalendar();
 
   const balance = availableEnergy();
   const pending = state.entries.reduce((total, entry) => entry.collected ? total : total + actionReward(entry), 0);
@@ -739,10 +1034,13 @@ function updateControls() {
   const hasOpenSoil = [...el.plots.children].some(button => !button.disabled && !button.matches(".locked, .planted"));
   const canPlant = hasOpenSoil && (hasSeedlings || balance >= minimumPrice);
   const { level } = playerLevel();
+  const unlockButton = el["forest-unlock-plants"];
+  unlockButton.disabled = [...plants.values()].every(plant => isPlantUnlocked(plant.unlockLevel, level));
+  el["forest-unlock-status"].textContent = unlockButton.disabled ? "全部可种植物已解锁。" : "";
   for (const [id, { card, buy, stock, choice, choicePrice }] of plantOptions) {
     const { name, price, unlockLevel } = plants.get(id);
     const owned = state.seedlings.filter(seedling => seedling.species === id).length;
-    const locked = level < unlockLevel;
+    const locked = !isPlantUnlocked(unlockLevel, level);
     card.classList.toggle("is-locked", locked);
     buy.disabled = locked || balance < price;
     buy.textContent = locked ? `${unlockLevel} 级解锁` : "购买";
@@ -854,9 +1152,13 @@ function renderPlots(growingIndex = -1) {
 }
 
 function renderOrbs() {
-  const pending = state.entries.filter(entry => !entry.collected).slice(0, orbOffsets.length);
-  for (const button of el.orbs.querySelectorAll(".orb:not(.fly)")) {
-    if (!pending.some(entry => entry.id === button.dataset.entry)) button.remove();
+  const uncollected = state.entries.filter(entry => !entry.collected);
+  const whaleBonusIndex = uncollected.findIndex(entry => entry.kind === whaleMoodBonus && entry.date === todayKey());
+  if (whaleBonusIndex > 0) uncollected.unshift(...uncollected.splice(whaleBonusIndex, 1));
+  const pending = uncollected.slice(0, orbOffsets.length);
+  for (const button of [...el.orbs.children]) {
+    const entries = button.classList.contains("fly") ? state.entries : pending;
+    if (!entries.some(entry => entry.id === button.dataset.entry)) button.remove();
   }
   for (const [index, entry] of pending.entries()) {
     const [x, y] = orbOffsets[index];
@@ -867,41 +1169,61 @@ function renderOrbs() {
       button.className = "orb";
       button.dataset.entry = entry.id;
       button.addEventListener("click", () => collect(entry.id));
+      button.addEventListener("pointerenter", event => {
+        if (event.pointerType !== "touch") showOrbTooltip(button);
+      });
+      button.addEventListener("pointerleave", () => {
+        if (previewOrb === button && !button.matches(":focus-visible")) showOrbTooltip();
+      });
+      button.addEventListener("focus", () => {
+        if (button.matches(":focus-visible")) showOrbTooltip(button);
+      });
+      button.addEventListener("blur", () => {
+        if (previewOrb === button && !button.matches(":hover")) showOrbTooltip();
+      });
       el.orbs.append(button);
     }
     const reward = actionReward(entry);
-    button.setAttribute("aria-label", `收取 ${reward} 点生命力 · ${actionRecordLabel(entry)}`);
-    button.title = `${reward} 点生命力`;
+    button.setAttribute("aria-label", `收取 ${reward} 点生命力 · ${orbActionName(entry)}`);
     button.dataset.rewardTier = Math.min(reward, 3);
     button.style.setProperty("--x", `calc(${orbCenter[0]}% + ${x} * var(--orb-spacing))`);
     button.style.setProperty("--y", `calc(${orbCenter[1]}% + ${y} * var(--orb-spacing))`);
   }
+  if (previewOrb) updateOrbTooltip();
+}
+
+function orbActionName(entry) {
+  const habit = state.habits.find(item => item.id === entry.kind);
+  return habit?.name ?? actionRecordLabel(entry);
 }
 
 function actionRecordLabel(entry) {
   return entry.actionLabel ?? defaultHabits[entry.kind]?.description ?? "示例生命力";
 }
 
-function toggleActionCompletion(kind) {
-  const date = todayKey();
+function toggleActionCompletion(kind, date = todayKey(), status = el["action-status"]) {
+  if (date > todayKey()) return;
   const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind);
   if (index < 0) {
-    record(kind);
+    record(kind, date, status);
     return;
   }
 
-  const status = el["action-status"];
   const entry = state.entries[index];
+  if (entry.source === "finance-link") {
+    status.textContent = "这项行动由存钱罐的记账记录自动完成。";
+    return;
+  }
   const spent = spentEnergyIds();
   if ([...spent].some(id => energyEntryId(id) === entry.id)) {
     status.textContent = "❌这项行动的生命力已花费，无法取消完成。";
     return;
   }
 
-  const today = state.entries.filter(item => item.date === date && item.kind !== dailyActionBonus && item.kind !== "sample");
-  const bonus = today.length <= dailyActionGoal && state.entries.find(item => item.date === date && item.kind === dailyActionBonus);
+  const dayCount = dailyActionTotals(state.entries).get(date) ?? 0;
+  const bonus = dayCount <= dailyActionGoal && state.entries.find(item => item.date === date && item.kind === dailyActionBonus);
   if (bonus && spent.has(bonus.id)) {
-    status.textContent = "今日达成奖励已花费，取消这项行动会低于 5 项，无法撤销。";
+    status.textContent = "当天的额外奖励已花费，取消这项行动会低于 5 项，无法撤销。";
     return;
   }
   const previous = state.entries;
@@ -913,35 +1235,70 @@ function toggleActionCompletion(kind) {
   }
   renderOrbs();
   updateControls();
-  const deducted = (entry.collected ? actionReward(entry) : 0) + (bonus?.collected ? 1 : 0);
+  const spentByEntry = countSpentEnergyByEntry(spent);
+  const deducted = remainingEntryEnergy(entry, spentByEntry) + (bonus ? remainingEntryEnergy(bonus, spentByEntry) : 0);
   status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
 }
 
-function record(kind) {
-  const date = todayKey();
-  const id = date + ":" + kind;
-  const habit = state.habits.find(habit => habit.id === kind);
-  if (!habit || state.entries.some(entry => entry.id === id)) return;
+function addActionEntry(habit, date, source) {
+  const { id: kind } = habit;
   const actionLabel = habit.description ? `${habit.name} · ${habit.description}` : habit.name;
   const reward = actionReward(habit);
-  const previousLength = state.entries.length;
-  state.entries.push({ id, date, kind, actionLabel, reward, collected: false });
-  const today = state.entries.filter(entry => entry.date === date);
-  const earnedBonus = today.filter(entry => entry.kind !== dailyActionBonus && entry.kind !== "sample").length >= dailyActionGoal
-    && !today.some(entry => entry.kind === dailyActionBonus);
+  state.entries.push({ id: `${date}:${kind}`, date, kind, actionLabel, reward, collected: false, source });
+  const bonusId = `${date}:${dailyActionBonus}`;
+  const earnedBonus = (dailyActionTotals(state.entries).get(date) ?? 0) >= dailyActionGoal
+    && !state.entries.some(entry => entry.id === bonusId);
+  // A deleted action can invalidate the record after its bonus point was spent.
+  const bonusAlreadySpent = earnedBonus && spentEnergyIds().has(bonusId);
   if (earnedBonus) {
-    state.entries.push({ id: `${date}:${dailyActionBonus}`, date, kind: dailyActionBonus, actionLabel: "今日完成 5 项行动奖励", reward: 1, collected: false });
+    const actionLabel = `${date === todayKey() ? "今日" : ""}完成 ${dailyActionGoal} 项行动奖励`;
+    state.entries.push({ id: bonusId, date, kind: dailyActionBonus, actionLabel, reward: 1, collected: bonusAlreadySpent });
   }
+  return { reward, earnedBonus: earnedBonus && !bonusAlreadySpent };
+}
+
+function record(kind, date, status) {
+  const habit = state.habits.find(habit => habit.id === kind);
+  if (!habit || state.entries.some(entry => entry.date === date && entry.kind === kind)) return;
+  const previousLength = state.entries.length;
+  const { reward, earnedBonus } = addActionEntry(habit, date);
   if (!saveState()) {
     state.entries.length = previousLength;
-    el["action-status"].textContent = "浏览器无法保存，标记完成失败。";
+    status.textContent = "浏览器无法保存，标记完成失败。";
     return;
   }
   renderOrbs();
   updateControls();
-  el["action-status"].textContent = earnedBonus
+  status.textContent = earnedBonus
     ? `已完成 ${dailyActionGoal} 项行动，额外获得 1 点待领取生命力。`
     : `已标记完成，${reward} 点生命力可在家门口领取。`;
+}
+
+function applyFinanceLink({ date, recorded, happy }) {
+  if (date !== todayKey()) return false;
+  if (recorded !== true) return true;
+  const previousLength = state.entries.length;
+  const habit = state.habits.find(item => item.name.trim() === "伊比理财");
+  const completed = habit && !state.entries.some(entry => entry.date === date && entry.kind === habit.id);
+  if (completed) addActionEntry(habit, date, "finance-link");
+
+  const id = `${date}:${whaleMoodBonus}`;
+  if (happy === true && !state.entries.some(entry => entry.id === id)) {
+    state.entries.push({ id, date, kind: whaleMoodBonus, actionLabel: "鲸鱼娘开心奖励", reward: 2, collected: false });
+  }
+  if (state.entries.length === previousLength) return true;
+  if (!saveState()) {
+    state.entries.length = previousLength;
+    return false;
+  }
+  renderOrbs();
+  updateControls();
+  if (el.journal.open) {
+    const tree = state.trees.find(item => item.plot === journalPlot);
+    if (tree || journalPlot === undefined) updateJournalRecords(tree);
+  }
+  if (completed && el.actions.open) el["action-status"].textContent = "伊比理财已根据今天的记账自动完成。";
+  return true;
 }
 
 function animateCollection(entries) {
@@ -967,6 +1324,7 @@ function collect(id) {
     notify("浏览器无法保存，收取生命力失败。");
     return;
   }
+  playEffect(sunCollectSound);
   animateCollection(entries);
   renderOrbs();
   updateControls();
@@ -988,7 +1346,7 @@ function showPlantPicker(index) {
 
 function buySeedling(id) {
   const species = plants.get(id);
-  if (playerLevel().level < species.unlockLevel) {
+  if (!isPlantUnlocked(species.unlockLevel)) {
     el["shop-status"].textContent = `${species.name}将在 ${species.unlockLevel} 级解锁。`;
     return;
   }
@@ -1059,7 +1417,7 @@ function plant(index, species) {
   if (stockIndex >= 0) {
     energyIds = state.seedlings.splice(stockIndex, 1)[0].energyIds;
   } else {
-    if (playerLevel().level < unlockLevel) {
+    if (!isPlantUnlocked(unlockLevel)) {
       notify(`${name}将在 ${unlockLevel} 级解锁。`);
       return;
     }
@@ -1085,10 +1443,9 @@ function showJournal(tree) {
   journalPlot = tree?.plot;
   el.journal.dataset.view = tree ? "crop" : "history";
   el["journal-kicker"].hidden = !tree;
-  el["journal-records-title"].textContent = tree ? "行动来源" : "行动记录";
+  el["journal-records-title"].textContent = tree ? "行动来源" : "生命力觉察";
   el["fertilizer-panel"].hidden = !tree;
   el["fertilizer-status"].textContent = "";
-  content.replaceChildren();
   if (tree) {
     const now = Date.now();
     el["journal-title"].textContent = plantAppearance(tree, now).name;
@@ -1097,16 +1454,23 @@ function showJournal(tree) {
     el["journal-title"].textContent = "森林手记";
     el["journal-cover-art"].src = "./assets/forest-journal.webp";
   }
+  updateJournalRecords(tree);
+  el.journal.showModal();
+  if (!tree) playEffect(journalOpenSound);
+  el.journal.scrollTop = 0;
+  content.scrollTop = 0;
+}
+
+function updateJournalRecords(tree) {
+  const content = el["journal-content"];
   const sourceIds = tree && new Set(tree.energyIds.map(energyEntryId));
   const entries = tree
     ? state.entries.filter(entry => sourceIds.has(entry.id))
     : state.entries.filter(entry => entry.kind !== "sample").reverse();
   el["journal-count"].textContent = `${entries.length} 条记录`;
   el["journal-count"].hidden = entries.length === 0;
+  content.replaceChildren();
   renderJournalRecords(content, entries, Boolean(tree));
-  el.journal.showModal();
-  el.journal.scrollTop = 0;
-  content.scrollTop = 0;
 }
 
 function renderJournalRecords(content, entries, isCrop) {
@@ -1199,6 +1563,54 @@ el.camera.addEventListener("pointermove", event => {
 el.camera.addEventListener("pointerleave", hideToolCursor);
 window.addEventListener("blur", hideToolCursor);
 
+function playToolEffect(tool, tree) {
+  if (reduceMotion.matches) return;
+
+  const [row, column] = plots[tree.plot];
+  const { rootX, rootY } = plotGeometry(row, column);
+  const effect = document.createElement("div");
+  effect.className = "tool-effect";
+  effect.dataset.tool = tool;
+  effect.setAttribute("aria-hidden", "true");
+  effect.style.left = `${rootX / sceneWidth * 100}%`;
+  effect.style.top = `${rootY / sceneHeight * 100}%`;
+
+  const toolArt = document.createElement("span");
+  toolArt.className = "tool-effect-icon";
+  const image = document.createElement("img");
+  image.alt = "";
+  image.src = `./assets/tools/${fieldTools.get(tool).artwork}.webp`;
+  toolArt.append(image);
+
+  if (tool === "harvest") {
+    const plant = el.plots.children[tree.plot].lastElementChild;
+    const liftedPlant = plant.cloneNode();
+    liftedPlant.className = "tool-effect-crop";
+    liftedPlant.style.width = `${plant.offsetWidth}px`;
+    liftedPlant.style.height = `${plant.offsetHeight}px`;
+    effect.style.setProperty("--grab-height", `${plant.offsetHeight * .53}px`);
+    effect.append(liftedPlant);
+
+    const fingers = image.cloneNode();
+    image.className = "tool-effect-palm";
+    fingers.className = "tool-effect-fingers";
+    toolArt.append(fingers);
+  } else {
+    for (let index = 0; index < 5; index++) {
+      const particle = document.createElement("i");
+      particle.className = "tool-effect-particle";
+      effect.append(particle);
+    }
+  }
+
+  effect.append(toolArt);
+  effect.addEventListener("animationend", event => {
+    if (event.target === effect) effect.remove();
+  });
+  hideToolCursor();
+  el.scene.append(effect);
+}
+
 function removePlant(tree) {
   state.spentPlantEnergyIds.push(...tree.energyIds);
   state.trees.splice(state.trees.indexOf(tree), 1);
@@ -1214,13 +1626,16 @@ function harvest(tree) {
   const id = speciesId(tree);
   const species = plants.get(id);
   if (growthPoints(tree, Date.now()) < maturityTarget(tree)) {
+    playEffect(buttonClickSound);
     notify(`${species.name}还未成熟。`);
     return;
   }
   if (el.journal.open) el.journal.close();
   state.warehouse[id] = (state.warehouse[id] ?? 0) + 1;
   state.player.xp += species.xp;
+  playToolEffect("harvest", tree);
   removePlant(tree);
+  playEffect(cropHarvestSound);
   notify(`收获了 ${species.name}，经验 +${species.xp}。作物已存入仓库。`);
 }
 
@@ -1245,12 +1660,15 @@ function interactWithPlot(index) {
     case "water": {
       const remaining = maturityTarget(tree) - growthPoints(tree, Date.now());
       if (remaining <= 0 || tree.waterBoost) {
+        playEffect(buttonClickSound);
         notify(remaining <= 0 ? "这株植物已经成熟。" : "这株植物已经浇过水。");
         return;
       }
       tree.waterBoost = Math.min(waterBoost, remaining);
       saveState();
       refreshGrowth();
+      playEffect(cropWaterSound);
+      playToolEffect("water", tree);
       notify(`浇水完成，生长值 +${tree.waterBoost}。`);
       break;
     }
@@ -1444,6 +1862,7 @@ el["avatar-file"].addEventListener("change", async event => {
   el["choose-avatar"].disabled = true;
   el["reset-avatar"].disabled = true;
   try {
+    const saveKey = forestSave.key();
     const header = new DataView(await file.slice(0, 8).arrayBuffer());
     if (header.byteLength < 8 || header.getUint32(0) !== 0x89504e47 || header.getUint32(4) !== 0x0d0a1a0a) {
       status.textContent = "请选择有效的 PNG 图片。";
@@ -1457,7 +1876,7 @@ el["avatar-file"].addEventListener("change", async event => {
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     try {
       canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      setAvatar(canvas.toDataURL("image/png"));
+      if (forestSave.key() === saveKey) setAvatar(canvas.toDataURL("image/png"));
     } finally {
       bitmap.close();
     }
@@ -1489,6 +1908,77 @@ for (const id of fieldTools.keys()) {
   el["tool-" + id].addEventListener("click", () => selectTool(id));
 }
 el["open-toolbox"].addEventListener("click", () => el.toolbox.showModal());
+
+function updateRipeningChoices() {
+  const select = el["forest-grow-plot"];
+  const current = select.value;
+  const now = Date.now();
+  const options = state.trees
+    .filter(tree => growthProgress(tree, now).remaining > 0)
+    .sort((left, right) => left.plot - right.plot)
+    .map(tree => new Option(`第 ${tree.plot + 1} 块地 · ${plants.get(speciesId(tree)).name}`, String(tree.plot)));
+  if (options.length > 1) options.push(new Option("全部未成熟作物", "all"));
+  select.disabled = el["forest-grow-confirm"].disabled = options.length === 0;
+  select.replaceChildren(...(options.length ? options : [new Option("暂无未成熟作物", "")]));
+  if (options.some(option => option.value === current)) select.value = current;
+}
+
+el["open-forest-controls"].addEventListener("click", () => {
+  el["forest-energy"].value = availableEnergy();
+  el["forest-energy-status"].textContent = "";
+  el["forest-grow-status"].textContent = "";
+  updateRipeningChoices();
+  el["forest-controls"].showModal();
+});
+el["forest-unlock-plants"].addEventListener("click", () => {
+  const previous = state.allPlantsUnlocked;
+  state.allPlantsUnlocked = true;
+  if (!saveState()) {
+    state.allPlantsUnlocked = previous;
+    el["forest-unlock-status"].textContent = "浏览器无法保存此次修改。";
+    return;
+  }
+  updateControls();
+});
+el["forest-energy-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  const target = el["forest-energy"].valueAsNumber;
+  const status = el["forest-energy-status"];
+  if (!Number.isSafeInteger(target) || target < 0) {
+    status.textContent = "请输入有效的非负整数。";
+    return;
+  }
+  if (!setAvailableEnergy(target)) {
+    status.textContent = "浏览器无法保存此次修改。";
+    return;
+  }
+  updateControls();
+  status.textContent = `可用生命力已设为 ${target} 点。`;
+});
+el["forest-grow-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  const selected = el["forest-grow-plot"].value;
+  const status = el["forest-grow-status"];
+  const now = Date.now();
+  const crops = state.trees.filter(tree =>
+    (selected === "all" || String(tree.plot) === selected) && growthProgress(tree, now).remaining > 0);
+  if (!crops.length) {
+    updateRipeningChoices();
+    status.textContent = "所选地块没有等待催熟的作物。";
+    return;
+  }
+  const previousTrees = state.trees;
+  state.trees = previousTrees.map(tree => crops.includes(tree) ? { ...tree, forcedMature: true } : tree);
+  if (!saveState()) {
+    state.trees = previousTrees;
+    status.textContent = "浏览器无法保存此次修改。";
+    return;
+  }
+  refreshGrowth();
+  updateRipeningChoices();
+  status.textContent = `已催熟 ${crops.length} 株作物，可以收获了。`;
+});
+
 el["open-life-transfer"].addEventListener("click", () => el["life-transfer"].showModal());
 el["life-transfer-form"].addEventListener("submit", event => {
   event.preventDefault();
@@ -1496,16 +1986,94 @@ el["life-transfer-form"].addEventListener("submit", event => {
   const hasMessage = el["life-transfer-message"].value.trim().length > 0;
   el["life-transfer-status"].textContent = `预览 · 已试传 ${event.submitter.value} 点生命力${hasMessage ? "，附有留言" : ""}`;
 });
+
+const buttonClickSound = new Audio("./assets/sfx/button-click.mp3");
+buttonClickSound.volume = 0.72;
+const journalOpenSound = new Audio("./assets/sfx/journal-open.mp3");
+const shopOpenSound = new Audio("./assets/sfx/shop-open.mp3");
+const cropWaterSound = new Audio("./assets/sfx/crop-water.mp3");
+const sunCollectSound = new Audio("./assets/sfx/sun-collect.mp3");
+const cropHarvestSound = new Audio("./assets/sfx/crop-harvest.mp3");
+
+function playEffect(sound) {
+  sound.currentTime = 0;
+  sound.play().catch(() => {});
+}
+
+document.addEventListener("click", event => {
+  if (!event.isTrusted || !(event.target instanceof Element)) return;
+  const button = event.target.closest("button:not(:disabled)");
+  if (!button || button.matches("#open-shop, #open-journal, #open-action-log, #collect-life, .orb, #journal-harvest")) return;
+  if (button.matches(".plot.planted") && (activeTool === "water" || activeTool === "harvest")) return;
+
+  playEffect(buttonClickSound);
+}, { capture: true });
+
 const musicFile = el["music-file"];
 const musicPlayer = el["music-player"];
 const musicStatus = el["music-status"];
+const musicToggle = el["toggle-music"];
+const backgroundTracks = [
+  { src: "./assets/music/sunny-mornings.mp3", title: "Sunny Mornings · Peder B. Helland" },
+  { src: "./assets/music/林中晨歌.mp3", title: "林中晨歌" },
+];
+let requestedMusicPlayback;
+
+function updateMusicToggle() {
+  const playing = !musicPlayer.paused && !musicPlayer.ended && !musicPlayer.error;
+  const label = playing ? "暂停背景音乐" : "播放背景音乐";
+  musicToggle.classList.toggle("is-playing", playing);
+  musicToggle.setAttribute("aria-label", label);
+  musicToggle.title = label;
+}
+
+function reportMusicError(message) {
+  musicStatus.textContent = message;
+  musicStatus.hidden = false;
+  if (!el["background-music"].open) notify(message);
+}
+
+function chooseBackgroundTrack() {
+  if (musicPlayer.src.startsWith("blob:")) return false;
+  const track = backgroundTracks[Math.floor(Math.random() * backgroundTracks.length)];
+  if (musicPlayer.getAttribute("src") === track.src && !musicPlayer.error) return false;
+  musicPlayer.src = track.src;
+  musicPlayer.hidden = false;
+  el["music-track"].textContent = track.title;
+  return true;
+}
+
+function playSelectedTrack() {
+  const playback = musicPlayer.play();
+  requestedMusicPlayback = playback;
+  playback.catch(error => {
+    if (error.name === "AbortError" || musicPlayer.error) return;
+    reportMusicError("未能开始播放，请再点一次播放按钮。");
+  }).finally(() => {
+    if (requestedMusicPlayback === playback) requestedMusicPlayback = undefined;
+  });
+}
+
+function playMusic() {
+  if (!musicPlayer.paused && !musicPlayer.ended) return;
+  chooseBackgroundTrack();
+  playSelectedTrack();
+}
+
+musicPlayer.addEventListener("play", () => {
+  // Native audio controls have already started playback when this event fires.
+  if (!requestedMusicPlayback && chooseBackgroundTrack()) playSelectedTrack();
+});
+musicToggle.addEventListener("click", () => {
+  if (musicPlayer.paused || musicPlayer.ended) playMusic();
+  else musicPlayer.pause();
+});
+for (const eventName of ["play", "pause", "ended", "emptied", "error"]) {
+  musicPlayer.addEventListener(eventName, updateMusicToggle);
+}
 el["open-background-music"].addEventListener("click", () => {
   el["background-music"].showModal();
-  musicPlayer.play().catch(error => {
-    if (error.name === "AbortError" || musicPlayer.error) return;
-    musicStatus.textContent = "未能开始播放，请点播放器的播放按钮重试。";
-    musicStatus.hidden = false;
-  });
+  playMusic();
 });
 musicPlayer.addEventListener("playing", () => { musicStatus.hidden = true; });
 el["choose-music"].addEventListener("click", () => musicFile.click());
@@ -1526,8 +2094,7 @@ musicFile.addEventListener("change", () => {
 });
 musicPlayer.addEventListener("error", () => {
   musicPlayer.hidden = true;
-  musicStatus.textContent = "无法播放这份音频，请换一个文件。";
-  musicStatus.hidden = false;
+  reportMusicError("无法播放这份音频，请在工具箱的背景音乐里换一个文件。");
 });
 
 el["collect-life"].addEventListener("click", () => collect());
@@ -1541,6 +2108,7 @@ el["dig-form"].addEventListener("submit", event => {
   if (!el["dig-dialog"].open) return;
   el["dig-dialog"].close();
   if (!state.trees.includes(pendingDig)) return;
+  playToolEffect("dig", pendingDig);
   removePlant(pendingDig);
   notify("地块已清理。");
 });
@@ -1574,6 +2142,7 @@ el["open-journal"].addEventListener("click", () => showJournal());
 el["open-shop"].addEventListener("click", () => {
   el["shop-status"].textContent = "";
   el.shop.showModal();
+  playEffect(shopOpenSound);
 });
 el["purchase-form"].addEventListener("submit", event => {
   if (event.submitter !== el["purchase-confirm"]) return;
@@ -1677,14 +2246,29 @@ for (const [id, fertilizer] of fertilizers) {
   el["fertilizer-options"].append(use);
   fertilizerOptions.set(id, { buy, stock, use, useStock });
 }
-window.addEventListener("storage", event => {
-  if (event.key !== storageKey) return;
+function refreshSavedForest() {
   state = readState();
   renderHabits();
   renderPlots();
   renderOrbs();
   updateControls();
+  if (el["forest-controls"].open) updateRipeningChoices();
+  if (el.journal.open) {
+    const tree = state.trees.find(item => item.plot === journalPlot);
+    if (tree || journalPlot === undefined) updateJournalRecords(tree);
+  }
+}
+window.addEventListener("storage", event => forestSave.storageChanged(event.key));
+window.addEventListener("focus", () => void forestSave.sync());
+window.addEventListener("online", () => void forestSave.sync());
+window.addEventListener("offline", () => void forestSave.sync());
+document.addEventListener("visibilitychange", () => {
+  void forestSave.sync();
 });
+setInterval(() => void forestSave.sync(), 30_000);
+el["account-sync-retry"].addEventListener("click", () => void forestSave.sync());
+el["account-sync-local"].addEventListener("click", () => forestSave.resolveConflict("local"));
+el["account-sync-cloud"].addEventListener("click", () => forestSave.resolveConflict("cloud"));
 window.addEventListener("focus", () => {
   if (todayKey() !== displayedDay) updateControls();
   refreshGrowth();

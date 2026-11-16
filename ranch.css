@@ -1,0 +1,146 @@
+:root {
+  color-scheme: light;
+  font: 16px system-ui, "Microsoft YaHei", sans-serif;
+  background: #46733a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.ranch-view {
+  position: fixed;
+  inset: 0;
+  overflow: clip;
+}
+.ranch-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+}
+.pasture { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.ranch-header {
+  position: fixed;
+  z-index: 1;
+  top: max(14px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 6px 13px 6px 6px;
+  border: 2px solid #e0ad58;
+  border-radius: 10px;
+  color: #ffefb3;
+  background: linear-gradient(#82542e, #57361e);
+  box-shadow: 0 3px 0 #3c291cbf, inset 0 0 0 1px #ffdf8877;
+}
+.ranch-header a {
+  display: grid;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 5px;
+  color: #532e18;
+  background: #ffe2a2;
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: none;
+}
+.ranch-header a:hover { background: #fff2c6; }
+.ranch-header a:focus-visible { outline: 2px solid #fff5ca; outline-offset: 2px; }
+.ranch-header h1 { margin: 0; font-size: 19px; letter-spacing: .08em; }
+.ranch-animal {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--size);
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+.ranch-animal::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  bottom: -1%;
+  width: 77%;
+  height: 13%;
+  background: radial-gradient(ellipse, #384e2577 10%, #384e253b 53%, transparent 75%);
+}
+.ranch-animal[data-species="cow"] { transform: translate(-50%, -92%); }
+.ranch-animal[data-species="cow"]::before { bottom: 1.5%; }
+.ranch-animal-facing { position: relative; transform: scaleX(var(--facing, 1)); }
+.ranch-animal-body { position: relative; transform-origin: 49% 94%; }
+.ranch-animal img { display: block; width: 100%; height: auto; }
+.ranch-animal-frames {
+  width: 100%;
+  aspect-ratio: 1;
+  background-position: var(--frame-position);
+  background-repeat: no-repeat;
+}
+.ranch-animal-sprite { position: relative; z-index: 1; }
+.ranch-animal .ranch-animal-feet {
+  display: none;
+  position: absolute;
+  inset: 0;
+  clip-path: inset(var(--leg-cut) 0 0);
+  transform-origin: 50% var(--leg-cut);
+}
+.ranch-animal[data-pose="walk"] .ranch-animal-sprite { clip-path: inset(0 0 calc(100% - var(--leg-cut) - 2px) 0); }
+.ranch-animal[data-pose="walk"] .ranch-animal-feet { display: block; animation: ranch-step var(--step-time) ease-in-out infinite alternate; }
+.ranch-animal-cutout[data-pose="walk"] .ranch-animal-body { animation: ranch-walk var(--step-time) ease-in-out infinite alternate; }
+.ranch-animal[data-pose="eat"]:not([data-species="cow"]) .ranch-animal-body { animation: ranch-eat 680ms ease-in-out infinite; }
+.ranch-eye {
+  position: absolute;
+  z-index: 2;
+  top: var(--eye-y);
+  left: var(--eye-x);
+  width: 11.8%;
+  height: 9.4%;
+  border-radius: 50%;
+  background: var(--lid);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+}
+.ranch-eye::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  top: 16%;
+  width: 76%;
+  height: 48%;
+  border-bottom: 1.5px solid #644126;
+  border-radius: 50%;
+}
+.ranch-animal.is-blinking .ranch-eye { opacity: 1; }
+.ranch-feed {
+  position: absolute;
+  z-index: 2;
+  left: 2%;
+  bottom: 11%;
+  width: 5%;
+  aspect-ratio: 1.7;
+  border-radius: 75% 35%;
+  background: #ffe88d;
+  box-shadow: -.25em .2em #e7b650, .21em .15em #fff0a9;
+  opacity: 0;
+}
+.ranch-animal[data-pose="eat"] .ranch-feed { animation: ranch-crumbs 680ms ease-out infinite; }
+@keyframes ranch-step {
+  from { transform: translateX(-5%) scaleY(.9); }
+  to { transform: translateX(5%) scaleY(1.03); }
+}
+@keyframes ranch-walk {
+  from { transform: translateY(-2%) rotate(-2deg); }
+  to { transform: translateY(1%) rotate(2deg); }
+}
+@keyframes ranch-eat {
+  0%, 100% { transform: rotate(-7deg); }
+  42%, 66% { transform: translate(-3%, 4%) rotate(var(--dip)); }
+}
+@keyframes ranch-crumbs {
+  0%, 30%, 100% { opacity: 0; }
+  47% { opacity: 1; transform: translate(0); }
+  84% { opacity: 0; transform: translate(-17%, -145%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ranch-animal *, .ranch-animal::before { animation: none !important; }
+}

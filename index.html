@@ -6,7 +6,9 @@
   <meta name="theme-color" content="#284a36">
   <title>生命森林</title>
   <link rel="stylesheet" href="./forest.css">
+  <script src="./save-sync.js" defer></script>
   <script src="./forest.js" defer></script>
+  <script src="./account.js" defer></script>
 </head>
 <body>
   <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -42,17 +44,58 @@
       </div>
     </div>
     <div class="crop-tooltip" id="crop-tooltip" role="tooltip" hidden>
-      <strong id="crop-tooltip-name"></strong>
+      <strong><img id="crop-tooltip-art" width="24" height="24" alt=""><span id="crop-tooltip-name"></span></strong>
       <span id="crop-tooltip-time"></span>
       <progress id="crop-tooltip-progress" aria-label="成熟进度"></progress>
     </div>
+    <div class="orb-tooltip" id="orb-tooltip" role="tooltip" hidden>
+      <svg class="orb-tooltip-art" viewBox="66 49 1105 604" aria-hidden="true">
+        <defs>
+          <clipPath id="orb-card-outline">
+            <path d="M76 224C79 197 104 178 144 177C119 147 149 91 219 75C209 104 227 129 211 157C229 138 245 118 264 114C266 104 279 101 290 105C281 94 282 77 293 72C306 65 322 80 318 101C329 88 346 82 352 93C358 105 350 117 341 121C362 112 359 105 377 97C402 86 435 92 447 112C495 95 542 55 625 54C709 53 766 112 833 125C873 130 930 121 980 123C1027 123 1048 145 1059 175C1099 178 1128 194 1144 227C1137 252 1130 271 1131 300L1131 390C1151 396 1165 410 1166 435C1167 459 1150 477 1132 488C1123 513 1104 529 1073 535C1060 555 1037 567 1008 568L709 568C674 568 662 603 627 650C595 606 585 569 551 569L238 569C211 568 194 557 182 539C140 534 115 512 114 484L112 279C88 268 71 253 76 224Z"/>
+          </clipPath>
+          <linearGradient id="orb-reason-feather" gradientUnits="userSpaceOnUse" x1="0" y1="378" x2="0" y2="451">
+            <stop offset="0" stop-color="white" stop-opacity="0"/>
+            <stop offset=".09" stop-color="white"/>
+            <stop offset=".91" stop-color="white"/>
+            <stop offset="1" stop-color="white" stop-opacity="0"/>
+          </linearGradient>
+          <mask id="orb-reason-strip" maskUnits="userSpaceOnUse" x="239" y="378" width="775" height="73">
+            <rect x="239" y="378" width="775" height="73" fill="url(#orb-reason-feather)"/>
+          </mask>
+          <linearGradient id="orb-amount-feather">
+            <stop offset="0" stop-color="white" stop-opacity="0"/>
+            <stop offset=".06" stop-color="white"/>
+            <stop offset=".94" stop-color="white"/>
+            <stop offset="1" stop-color="white" stop-opacity="0"/>
+          </linearGradient>
+          <mask id="orb-amount-strip" maskUnits="userSpaceOnUse" x="723" y="220" width="181" height="119">
+            <rect x="723" y="220" width="181" height="119" fill="url(#orb-amount-feather)"/>
+          </mask>
+        </defs>
+        <g clip-path="url(#orb-card-outline)">
+          <image id="orb-card-artwork" href="./assets/whale-orb-card-reference.png" width="1254" height="1254"/>
+          <g mask="url(#orb-reason-strip)">
+            <use href="#orb-card-artwork" transform="translate(0 378) scale(1 7.3) translate(0 -372)"/>
+          </g>
+          <g class="orb-tooltip-amount-patch" mask="url(#orb-amount-strip)">
+            <use href="#orb-card-artwork" transform="translate(723 0) scale(9.05 1) translate(-891 0)"/>
+          </g>
+        </g>
+      </svg>
+      <span class="orb-tooltip-amount" id="orb-tooltip-amount" aria-hidden="true"></span>
+      <span class="orb-tooltip-reason" id="orb-tooltip-reason" aria-hidden="true"></span>
+    </div>
     <header class="hud">
       <div class="brand">
-        <button class="player-avatar" id="open-profile" type="button" aria-label="玩家资料与头像" title="更换头像"><img id="player-avatar-image" src="./assets/growth/fir-seedling.webp" alt=""></button>
+        <div class="player-portrait">
+          <button class="player-avatar" id="open-profile" type="button" aria-label="玩家资料与头像" title="更换头像"><img id="player-avatar-image" src="./assets/growth/fir-seedling.webp" alt=""></button>
+          <button class="player-music" id="toggle-music" type="button" aria-label="播放背景音乐" title="播放背景音乐"><span aria-hidden="true"></span></button>
+        </div>
         <div class="player-stats">
           <h1 id="world-title" class="visually-hidden">生命森林</h1>
           <button class="player-name" id="player-name" type="button">森林旅人</button>
-          <div class="player-rank"><strong id="player-level">1 级</strong><span id="player-title">林间学徒</span></div>
+          <div class="player-rank"><strong id="player-level">1 级</strong><span id="player-title">林间学徒</span><span class="account-badge" id="player-login-status" hidden>已登录</span></div>
           <div class="player-xp">
             <progress id="player-xp" value="0" max="200" aria-label="升级经验"></progress>
             <span id="player-xp-label">0 / 200</span>
@@ -85,6 +128,7 @@
       <button class="hud-shortcut" id="open-bag" type="button"><img src="./assets/tools/bag.webp" alt=""><span>背包</span></button>
       <button class="hud-shortcut" id="open-warehouse" type="button"><img src="./assets/tools/warehouse.webp" alt=""><span>仓库</span></button>
       <button class="hud-shortcut" id="open-toolbox" type="button"><img src="./assets/tools/toolbox.webp" alt=""><span>工具箱</span></button>
+      <a class="hud-shortcut ranch-shortcut" href="./ranch.html"><img src="./assets/ranch/chicken.webp" alt=""><span>牧场</span></a>
     </nav>
     <img class="tool-cursor" id="tool-cursor" alt="" draggable="false" hidden>
     <p class="notice" id="notice" role="status" hidden></p>
@@ -165,7 +209,87 @@
         <span class="habit-icon" aria-hidden="true"><svg><use href="#spark"/></svg></span>
         <span class="habit-copy"><strong>生命力传递</strong></span>
       </button>
+      <button class="habit" id="open-account" type="button">
+        <span class="habit-icon" aria-hidden="true"><svg><use href="#lock"/></svg></span>
+        <span class="habit-copy"><strong>账号登录</strong></span>
+        <span class="account-tool-status" id="account-tool-status" hidden><span class="account-badge">已登录</span><span id="account-tool-email"></span></span>
+      </button>
+      <button class="habit" id="open-forest-controls" type="button">
+        <span class="habit-icon" aria-hidden="true">✦</span>
+        <span class="habit-copy"><strong>神之一手</strong></span>
+      </button>
     </div>
+  </dialog>
+  <dialog id="forest-controls" aria-labelledby="forest-controls-title">
+    <div class="dialog-heading"><h2 id="forest-controls-title">神之一手</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭神之一手"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
+    <form class="action-editor-form forest-control-form" id="forest-energy-form">
+      <label for="forest-energy">可用生命力</label>
+      <div class="forest-control-row">
+        <input id="forest-energy" type="number" min="0" step="1" required inputmode="numeric">
+        <button class="primary" type="submit">设置余额</button>
+      </div>
+      <p class="guide" id="forest-energy-status" role="status"></p>
+    </form>
+    <form class="action-editor-form forest-control-form" id="forest-grow-form">
+      <label for="forest-grow-plot">催熟作物</label>
+      <div class="forest-control-row">
+        <select id="forest-grow-plot"></select>
+        <button class="primary" id="forest-grow-confirm" type="submit">立即催熟</button>
+      </div>
+      <p class="guide" id="forest-grow-status" role="status"></p>
+    </form>
+    <div class="action-editor-form forest-control-form">
+      <button class="primary" id="forest-unlock-plants" type="button">解锁全部可种植物</button>
+      <p class="guide" id="forest-unlock-status" role="status"></p>
+    </div>
+  </dialog>
+  <dialog id="account" aria-labelledby="account-title">
+    <div class="dialog-heading account-heading">
+      <h2 id="account-title" tabindex="-1" autofocus>🐟️鲸鱼娘在种地⛏️</h2>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭账号窗口"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <img class="account-art" src="./assets/account-harvest.png" width="1086" height="1448" loading="lazy" alt="鲸歌女仆捧着刚收获的蔬菜">
+    <form id="account-form" method="dialog">
+      <fieldset id="account-fields">
+        <div class="account-modes" role="group" aria-label="登录方式">
+          <button type="button" data-mode="code" aria-pressed="true">验证码</button>
+          <button type="button" data-mode="password" aria-pressed="false">密码</button>
+          <button type="button" data-mode="setup" aria-pressed="false">设置密码</button>
+        </div>
+        <label for="account-email">邮箱地址</label>
+        <input id="account-email" type="email" autocomplete="username" placeholder="输入邮箱地址" required>
+        <div class="account-section" id="account-verification">
+          <label for="account-code">邮箱验证码</label>
+          <div class="account-code-row">
+            <input id="account-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="输入验证码" maxlength="6" pattern="[0-9]{6}" required>
+            <button class="account-send" id="account-send" type="button">发送</button>
+          </div>
+        </div>
+        <div class="account-section" id="account-password-section" hidden>
+          <label for="account-password">密码</label>
+          <input id="account-password" type="password" autocomplete="current-password" placeholder="输入密码" required disabled>
+        </div>
+        <div class="account-section" id="account-setup" hidden>
+          <label for="account-new-password">新密码</label>
+          <input id="account-new-password" type="password" autocomplete="new-password" placeholder="至少 6 位" minlength="6" required disabled>
+          <label for="account-confirm-password">确认密码</label>
+          <input id="account-confirm-password" type="password" autocomplete="new-password" placeholder="再次输入新密码" required disabled>
+        </div>
+        <button class="account-submit" id="account-submit" type="submit">确认登录</button>
+      </fieldset>
+    </form>
+    <div class="account-session" id="account-session" hidden>
+      <p>已登录 <strong id="account-identity"></strong></p>
+      <p id="account-sync-status" class="guide" role="status"></p>
+      <div class="account-modes" id="account-sync-choices" hidden>
+        <button id="account-sync-local" class="account-send" type="button">使用此设备</button>
+        <button id="account-sync-cloud" class="account-send" type="button">使用云端</button>
+      </div>
+      <button id="account-sync-retry" class="account-send" type="button" hidden>重试同步</button>
+      <p id="account-finance-status" class="guide" role="status"></p>
+      <button class="account-submit" id="account-sign-out" type="button">退出登录</button>
+    </div>
+    <p id="account-status" role="status" hidden></p>
   </dialog>
   <dialog id="life-transfer" aria-labelledby="life-transfer-title">
     <div class="life-transfer-layout">
@@ -240,7 +364,7 @@
         <div class="action-streak">
           <i class="action-art action-chest" aria-hidden="true"></i>
           <p id="action-bonus-copy">今日完成 <b>5</b> 项行动<br>可额外获得 <strong>生命力 +1</strong>！</p>
-          <div class="action-streak-days"><i class="action-art action-calendar" aria-hidden="true"></i><span>连续完成天数 <strong id="action-streak">0</strong> 天</span></div>
+          <button class="action-streak-days" id="open-action-calendar" type="button" aria-label="打开行动日历" aria-haspopup="dialog"><i class="action-art action-calendar" aria-hidden="true"></i><span>连续完成天数 <strong id="action-streak">0</strong> 天</span></button>
         </div>
         <div class="action-toolbar">
           <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>新增行动</button>
@@ -250,6 +374,28 @@
         <p class="storage visually-hidden" id="storage-note" role="status">行动、植物与库存保存在此浏览器</p>
       </div>
       <div class="action-board-footer" aria-hidden="true"><span class="action-art action-board-bottom"></span></div>
+    </div>
+  </dialog>
+  <dialog id="action-calendar-dialog" aria-labelledby="action-calendar-title">
+    <div class="dialog-heading">
+      <h2 id="action-calendar-title">行动日历</h2>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭行动日历"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <div class="action-calendar-layout">
+      <section class="action-calendar-sheet" aria-label="月历">
+        <div class="action-calendar-nav">
+          <button id="action-calendar-prev" type="button" aria-label="上个月">‹</button>
+          <strong id="action-calendar-month" aria-live="polite"></strong>
+          <button id="action-calendar-next" type="button" aria-label="下个月">›</button>
+        </div>
+        <div class="action-calendar-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div id="action-calendar-days" class="action-calendar-days" role="group" aria-label="选择日期"></div>
+      </section>
+      <section class="action-calendar-records" aria-labelledby="action-calendar-date">
+        <div class="action-calendar-records-heading"><h3 id="action-calendar-date"></h3><span id="action-calendar-count"></span></div>
+        <div id="action-calendar-habits" class="action-calendar-habits"></div>
+        <p id="action-calendar-status" class="guide" role="status"></p>
+      </section>
     </div>
   </dialog>
   <dialog id="action-editor" aria-labelledby="action-editor-title">
@@ -329,7 +475,7 @@
       </div>
       <section class="journal-page" aria-labelledby="journal-records-title">
         <header class="journal-page-heading">
-          <h3 id="journal-records-title">行动记录</h3>
+          <h3 id="journal-records-title">生命力觉察</h3>
           <span id="journal-count" hidden></span>
         </header>
         <div id="journal-content" class="journal-content"></div>

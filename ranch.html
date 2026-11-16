@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>牧场 · 生命森林</title>
+  <link rel="stylesheet" href="./ranch.css">
+  <link rel="preload" href="./assets/ranch/cow-walk.webp" as="image">
+  <link rel="preload" href="./assets/ranch/cow-eat.webp" as="image">
+  <link rel="preload" href="./assets/ranch/cow-groom.webp" as="image">
+  <script src="./ranch.js" defer></script>
+</head>
+<body>
+  <header class="ranch-header">
+    <a href="./index.html">‹ 返回农场</a>
+    <h1>牧场</h1>
+  </header>
+  <main class="ranch-view" id="ranch-view" aria-label="牧场">
+    <div class="ranch-scene" id="ranch-scene">
+      <img class="pasture" src="./assets/ranch/pasture.webp" width="1672" height="941" alt="木围栏圈着牧场草地，里面有水池、草棚和饲料槽。" draggable="false">
+    </div>
+  </main>
+</body>
+</html>

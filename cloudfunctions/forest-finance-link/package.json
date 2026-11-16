@@ -1,0 +1,10 @@
+{
+  "name": "forest-finance-link",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.0.0",
+    "date-fns": "4.1.0"
+  }
+}
