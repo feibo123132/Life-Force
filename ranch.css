@@ -1,14 +1,9 @@
-:root {
-  color-scheme: light;
-  font: 16px system-ui, "Microsoft YaHei", sans-serif;
-  background: #46733a;
-}
-* { box-sizing: border-box; }
-body { margin: 0; }
 .ranch-view {
-  position: fixed;
+  position: absolute;
+  z-index: 0;
   inset: 0;
   overflow: clip;
+  background: #46733a;
 }
 .ranch-scene {
   position: relative;
@@ -18,11 +13,11 @@ body { margin: 0; }
   user-select: none;
 }
 .pasture { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
-.ranch-header {
-  position: fixed;
-  z-index: 1;
-  top: max(14px, env(safe-area-inset-top));
-  left: max(14px, env(safe-area-inset-left));
+.ranch-navigation {
+  position: absolute;
+  z-index: 4;
+  bottom: var(--bottom);
+  left: max(var(--edge), env(safe-area-inset-left));
   display: flex;
   align-items: center;
   gap: 13px;
@@ -33,7 +28,7 @@ body { margin: 0; }
   background: linear-gradient(#82542e, #57361e);
   box-shadow: 0 3px 0 #3c291cbf, inset 0 0 0 1px #ffdf8877;
 }
-.ranch-header a {
+.ranch-navigation a {
   display: grid;
   align-items: center;
   min-height: 38px;
@@ -45,9 +40,9 @@ body { margin: 0; }
   font-weight: 750;
   text-decoration: none;
 }
-.ranch-header a:hover { background: #fff2c6; }
-.ranch-header a:focus-visible { outline: 2px solid #fff5ca; outline-offset: 2px; }
-.ranch-header h1 { margin: 0; font-size: 19px; letter-spacing: .08em; }
+.ranch-navigation a:hover { background: #fff2c6; }
+.ranch-navigation a:focus-visible { outline: 2px solid #fff5ca; outline-offset: 2px; }
+.ranch-navigation span { font-size: 19px; font-weight: 750; letter-spacing: .08em; }
 .ranch-animal {
   position: absolute;
   left: var(--x);
@@ -87,7 +82,7 @@ body { margin: 0; }
 .ranch-animal[data-pose="walk"] .ranch-animal-sprite { clip-path: inset(0 0 calc(100% - var(--leg-cut) - 2px) 0); }
 .ranch-animal[data-pose="walk"] .ranch-animal-feet { display: block; animation: ranch-step var(--step-time) ease-in-out infinite alternate; }
 .ranch-animal-cutout[data-pose="walk"] .ranch-animal-body { animation: ranch-walk var(--step-time) ease-in-out infinite alternate; }
-.ranch-animal[data-pose="eat"]:not([data-species="cow"]) .ranch-animal-body { animation: ranch-eat 680ms ease-in-out infinite; }
+.ranch-animal[data-pose="eat"]:not(.ranch-animal-eat-frames) .ranch-animal-body { animation: ranch-eat 680ms ease-in-out infinite; }
 .ranch-eye {
   position: absolute;
   z-index: 2;

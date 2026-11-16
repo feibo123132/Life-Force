@@ -6,9 +6,11 @@
   <meta name="theme-color" content="#284a36">
   <title>生命森林</title>
   <link rel="stylesheet" href="./forest.css">
+  <link rel="stylesheet" href="./ranch.css">
   <script src="./save-sync.js" defer></script>
   <script src="./forest.js" defer></script>
   <script src="./account.js" defer></script>
+  <script src="./ranch.js" defer></script>
 </head>
 <body>
   <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -22,6 +24,8 @@
     </symbol>
     <symbol id="move" viewBox="0 0 24 24"><circle cx="15" cy="4.5" r="2"/><path d="m7 11 3-3 3.5.5 2.5 4h4m-8-4-2 6 4 2v4m-4-6-3 5H3"/></symbol>
     <symbol id="focus" viewBox="0 0 24 24"><path d="M12 6C9 4 6 4 3 5v13c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Zm0 0v13"/></symbol>
+    <symbol id="action-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></symbol>
+    <symbol id="action-camera" viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
     <symbol id="reflect" viewBox="0 0 24 24"><path d="M20 15a8 8 0 0 1-11-11 8.5 8.5 0 1 0 11 11Zm-5-9h5m-2.5-2.5v5"/></symbol>
     <symbol id="save" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="12" rx="4"/><path d="M4 8h16M8 5h8m-6 7h4"/></symbol>
     <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -31,6 +35,44 @@
     <symbol id="cart" viewBox="0 0 24 24"><path d="M2 3h3l3 12h11l3-9H6m3 12h10"/><circle cx="10" cy="21" r="1"/><circle cx="18" cy="21" r="1"/></symbol>
     <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
     <symbol id="edit-action" viewBox="0 0 24 24"><path d="m5 15-1 5 5-1L20 8l-4-4L5 15Zm9-9 4 4"/></symbol>
+  </svg>
+  <svg class="tooltip-board-definitions" aria-hidden="true">
+    <defs>
+      <clipPath id="orb-card-outline" fill="#fff">
+        <path d="M76 224C79 197 104 178 144 177C119 147 149 91 219 75C209 104 227 129 211 157C229 138 245 118 264 114C266 104 279 101 290 105C281 94 282 77 293 72C306 65 322 80 318 101C329 88 346 82 352 93C358 105 350 117 341 121C362 112 359 105 377 97C402 86 435 92 447 112C495 95 542 55 625 54C709 53 766 112 833 125C873 130 930 121 980 123C1027 123 1048 145 1059 175C1099 178 1128 194 1144 227C1137 252 1130 271 1131 300L1131 390C1151 396 1165 410 1166 435C1167 459 1150 477 1132 488C1123 513 1104 529 1073 535C1060 555 1037 567 1008 568L709 568C674 568 662 603 627 650C595 606 585 569 551 569L238 569C211 568 194 557 182 539C140 534 115 512 114 484L112 279C88 268 71 253 76 224Z"/>
+      </clipPath>
+      <linearGradient id="tooltip-paper-feather" x2="0" y2="100%">
+        <stop offset="0" stop-color="white" stop-opacity="0"/>
+        <stop offset=".09" stop-color="white"/>
+        <stop offset=".91" stop-color="white"/>
+        <stop offset="1" stop-color="white" stop-opacity="0"/>
+      </linearGradient>
+      <mask id="orb-reason-strip" maskUnits="userSpaceOnUse" x="239" y="378" width="775" height="73">
+        <rect x="239" y="378" width="775" height="73" fill="url(#tooltip-paper-feather)"/>
+      </mask>
+      <linearGradient id="orb-amount-feather">
+        <stop offset="0" stop-color="white" stop-opacity="0"/>
+        <stop offset=".06" stop-color="white"/>
+        <stop offset=".94" stop-color="white"/>
+        <stop offset="1" stop-color="white" stop-opacity="0"/>
+      </linearGradient>
+      <mask id="orb-amount-strip" maskUnits="userSpaceOnUse" x="723" y="220" width="181" height="119">
+        <rect x="723" y="220" width="181" height="119" fill="url(#orb-amount-feather)"/>
+      </mask>
+      <mask id="crop-name-strip" maskUnits="userSpaceOnUse" x="373" y="219" width="531" height="121">
+        <rect x="373" y="219" width="531" height="121" fill="url(#orb-amount-feather)"/>
+      </mask>
+      <mask id="crop-progress-strip" maskUnits="userSpaceOnUse" x="380" y="451" width="491" height="74">
+        <rect x="380" y="451" width="491" height="74" fill="url(#tooltip-paper-feather)"/>
+      </mask>
+      <image id="orb-card-artwork" href="./assets/whale-orb-card-reference.png" width="1254" height="1254"/>
+      <g id="tooltip-board" clip-path="url(#orb-card-outline)">
+        <use href="#orb-card-artwork"/>
+        <g mask="url(#orb-reason-strip)">
+          <use href="#orb-card-artwork" transform="translate(0 378) scale(1 7.3) translate(0 -372)"/>
+        </g>
+      </g>
+    </defs>
   </svg>
   <main class="world" id="forest" aria-labelledby="world-title">
     <div class="camera" id="camera">
@@ -43,44 +85,30 @@
         </div>
       </div>
     </div>
+    <section class="ranch-view" id="ranch-view" aria-label="牧场" hidden>
+      <div class="ranch-scene" id="ranch-scene">
+        <img class="pasture" src="./assets/ranch/pasture.webp" width="1672" height="941" alt="木围栏圈着牧场草地，里面有水池、草棚和饲料槽。" loading="lazy" draggable="false">
+      </div>
+    </section>
     <div class="crop-tooltip" id="crop-tooltip" role="tooltip" hidden>
+      <svg class="tooltip-board-art" viewBox="66 49 1105 604" aria-hidden="true">
+        <use href="#tooltip-board"/>
+        <g mask="url(#crop-name-strip)">
+          <use href="#orb-card-artwork" transform="translate(373 0) scale(26.55 1) translate(-891 0)"/>
+        </g>
+        <g mask="url(#crop-progress-strip)">
+          <use href="#orb-card-artwork" transform="translate(0 451) scale(1 12.333) translate(0 -451)"/>
+        </g>
+      </svg>
       <strong><img id="crop-tooltip-art" width="24" height="24" alt=""><span id="crop-tooltip-name"></span></strong>
       <span id="crop-tooltip-time"></span>
       <progress id="crop-tooltip-progress" aria-label="成熟进度"></progress>
     </div>
     <div class="orb-tooltip" id="orb-tooltip" role="tooltip" hidden>
-      <svg class="orb-tooltip-art" viewBox="66 49 1105 604" aria-hidden="true">
-        <defs>
-          <clipPath id="orb-card-outline">
-            <path d="M76 224C79 197 104 178 144 177C119 147 149 91 219 75C209 104 227 129 211 157C229 138 245 118 264 114C266 104 279 101 290 105C281 94 282 77 293 72C306 65 322 80 318 101C329 88 346 82 352 93C358 105 350 117 341 121C362 112 359 105 377 97C402 86 435 92 447 112C495 95 542 55 625 54C709 53 766 112 833 125C873 130 930 121 980 123C1027 123 1048 145 1059 175C1099 178 1128 194 1144 227C1137 252 1130 271 1131 300L1131 390C1151 396 1165 410 1166 435C1167 459 1150 477 1132 488C1123 513 1104 529 1073 535C1060 555 1037 567 1008 568L709 568C674 568 662 603 627 650C595 606 585 569 551 569L238 569C211 568 194 557 182 539C140 534 115 512 114 484L112 279C88 268 71 253 76 224Z"/>
-          </clipPath>
-          <linearGradient id="orb-reason-feather" gradientUnits="userSpaceOnUse" x1="0" y1="378" x2="0" y2="451">
-            <stop offset="0" stop-color="white" stop-opacity="0"/>
-            <stop offset=".09" stop-color="white"/>
-            <stop offset=".91" stop-color="white"/>
-            <stop offset="1" stop-color="white" stop-opacity="0"/>
-          </linearGradient>
-          <mask id="orb-reason-strip" maskUnits="userSpaceOnUse" x="239" y="378" width="775" height="73">
-            <rect x="239" y="378" width="775" height="73" fill="url(#orb-reason-feather)"/>
-          </mask>
-          <linearGradient id="orb-amount-feather">
-            <stop offset="0" stop-color="white" stop-opacity="0"/>
-            <stop offset=".06" stop-color="white"/>
-            <stop offset=".94" stop-color="white"/>
-            <stop offset="1" stop-color="white" stop-opacity="0"/>
-          </linearGradient>
-          <mask id="orb-amount-strip" maskUnits="userSpaceOnUse" x="723" y="220" width="181" height="119">
-            <rect x="723" y="220" width="181" height="119" fill="url(#orb-amount-feather)"/>
-          </mask>
-        </defs>
-        <g clip-path="url(#orb-card-outline)">
-          <image id="orb-card-artwork" href="./assets/whale-orb-card-reference.png" width="1254" height="1254"/>
-          <g mask="url(#orb-reason-strip)">
-            <use href="#orb-card-artwork" transform="translate(0 378) scale(1 7.3) translate(0 -372)"/>
-          </g>
-          <g class="orb-tooltip-amount-patch" mask="url(#orb-amount-strip)">
-            <use href="#orb-card-artwork" transform="translate(723 0) scale(9.05 1) translate(-891 0)"/>
-          </g>
+      <svg class="tooltip-board-art" viewBox="66 49 1105 604" aria-hidden="true">
+        <use href="#tooltip-board"/>
+        <g class="orb-tooltip-amount-patch" mask="url(#orb-amount-strip)">
+          <use href="#orb-card-artwork" transform="translate(723 0) scale(9.05 1) translate(-891 0)"/>
         </g>
       </svg>
       <span class="orb-tooltip-amount" id="orb-tooltip-amount" aria-hidden="true"></span>
@@ -99,6 +127,7 @@
           <div class="player-xp">
             <progress id="player-xp" value="0" max="200" aria-label="升级经验"></progress>
             <span id="player-xp-label">0 / 200</span>
+            <span id="player-xp-gain" aria-hidden="true" hidden></span>
           </div>
           <div class="player-wallet">
             <span><i class="coin-mark" aria-hidden="true"></i>金币 <strong id="player-gold">0</strong></span>
@@ -121,18 +150,22 @@
         </button>
       </div>
     </header>
-    <nav class="farm-tools" aria-label="农场工具">
+    <nav class="farm-tools" id="farm-tools" aria-label="农场工具">
       <button class="hud-shortcut" id="tool-dig" type="button" aria-pressed="false"><img src="./assets/tools/dig.webp" alt=""><span>铲地</span></button>
       <button class="hud-shortcut" id="tool-water" type="button" aria-pressed="false"><img src="./assets/tools/water.webp" alt=""><span>浇水</span></button>
       <button class="hud-shortcut" id="tool-harvest" type="button" aria-pressed="false"><img src="./assets/tools/harvest-hand.webp" alt=""><span>收获</span></button>
       <button class="hud-shortcut" id="open-bag" type="button"><img src="./assets/tools/bag.webp" alt=""><span>背包</span></button>
       <button class="hud-shortcut" id="open-warehouse" type="button"><img src="./assets/tools/warehouse.webp" alt=""><span>仓库</span></button>
       <button class="hud-shortcut" id="open-toolbox" type="button"><img src="./assets/tools/toolbox.webp" alt=""><span>工具箱</span></button>
-      <a class="hud-shortcut ranch-shortcut" href="./ranch.html"><img src="./assets/ranch/chicken.webp" alt=""><span>牧场</span></a>
+      <a class="hud-shortcut ranch-shortcut" id="open-ranch" href="#ranch"><img src="./assets/ranch/chicken.webp" alt=""><span>牧场</span></a>
+    </nav>
+    <nav class="ranch-navigation" id="ranch-navigation" aria-label="牧场导航" hidden>
+      <a id="return-farm" href="#farm">‹ 返回农场</a>
+      <span>牧场</span>
     </nav>
     <img class="tool-cursor" id="tool-cursor" alt="" draggable="false" hidden>
     <p class="notice" id="notice" role="status" hidden></p>
-    <p class="pan-hint">左右滑动探索山谷</p>
+    <p class="pan-hint" id="pan-hint">左右滑动探索山谷</p>
   </main>
   <dialog id="profile" aria-labelledby="profile-title">
     <div class="dialog-heading"><h2 id="profile-title">玩家资料</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
@@ -368,6 +401,7 @@
         </div>
         <div class="action-toolbar">
           <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>新增行动</button>
+          <button class="action-add" id="add-action-category" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#plus"/></svg>新增分类</button>
           <button class="action-edit-toggle" id="toggle-action-edit" type="button" aria-pressed="false" aria-controls="habits"><svg aria-hidden="true"><use href="#edit-action"/></svg>编辑</button>
         </div>
         <p class="guide" id="action-status" role="status"></p>
@@ -397,6 +431,18 @@
         <p id="action-calendar-status" class="guide" role="status"></p>
       </section>
     </div>
+  </dialog>
+  <dialog id="action-category-dialog" aria-labelledby="action-category-dialog-title">
+    <div class="dialog-heading">
+      <h2 id="action-category-dialog-title">新增分类</h2>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <form class="action-editor-form" id="action-category-form">
+      <label for="action-category-name">分类名称</label>
+      <input id="action-category-name" maxlength="16" required autofocus>
+      <div class="action-editor-buttons"><button class="primary" type="submit">创建分类</button></div>
+    </form>
+    <p class="guide" id="action-category-status" role="status"></p>
   </dialog>
   <dialog id="action-editor" aria-labelledby="action-editor-title">
     <div class="dialog-heading">
@@ -434,11 +480,11 @@
         <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
       </div>
       <div class="shop-categories" id="shop-categories" role="group" aria-label="商品分类">
-        <button type="button" aria-pressed="true" aria-controls="shop-plants"><svg aria-hidden="true"><use href="#sprout"/></svg>植物种苗</button>
+        <button type="button" aria-pressed="true" aria-controls="shop-plants"><svg aria-hidden="true"><use href="#sprout"/></svg>种苗</button>
         <button type="button" aria-pressed="false" aria-controls="shop-fertilizer"><svg class="shop-sack" aria-hidden="true"><use href="#fertilizer-sack"/></svg>化肥</button>
       </div>
       <div class="shop-shelf">
-        <div class="shop-grid" id="shop-plants"></div>
+        <div class="shop-grid" id="shop-plants" tabindex="0" role="region" aria-label="种苗"></div>
         <div class="shop-grid shop-fertilizers" id="shop-fertilizer" hidden></div>
         <p class="shop-status" id="shop-status" role="status"></p>
       </div>

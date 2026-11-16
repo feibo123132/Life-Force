@@ -7,7 +7,7 @@ const defaultHabits = {
   save: { name: "好好存钱", description: "按计划实际存入一笔", icon: "save" },
 };
 const initialHabits = () => Object.entries(defaultHabits).map(([id, { name, description }]) => ({ id, name, description }));
-const actionCategories = new Map([
+const defaultActionCategories = new Map([
   ["all", "全部"], ["study", "学习"], ["work", "工作"],
   ["exercise", "锻炼"], ["music", "音乐"], ["other", "其它"],
 ]);
@@ -55,13 +55,27 @@ const maxSceneZoom = 1.65;
 let sceneZoom = 1;
 const orbCenter = [74.2, 50.2];
 const orbOffsets = [[-1, -.5], [0, -.5], [1, -.5], [-.5, .5], [.5, .5]];
+const plantTiers = {
+  rice: { unlockLevel: 1, price: 2, maturity: 60, xp: 42, gold: 8 },
+  reeds: { unlockLevel: 5, price: 4, maturity: 75, xp: 88, gold: 11 },
+  fir: { unlockLevel: 10, price: 6, maturity: 90, xp: 138, gold: 14 },
+  sunflower: { unlockLevel: 15, price: 8, maturity: 105, xp: 192, gold: 18 },
+  banana: { unlockLevel: 20, price: 10, maturity: 135, xp: 250, gold: 25 },
+  cherry: { unlockLevel: 25, price: 12, maturity: 165, xp: 312, gold: 34 },
+};
 const plants = new Map([
-  ["fir", { name: "小杉树", unlockLevel: 10, sprite: "./assets/island-fir.webp", height: 170, price: 6, maturity: 90, xp: 138, gold: 14 }],
-  ["sunflower", { name: "向日葵", unlockLevel: 15, sprite: "./assets/sunflower.webp", height: 122, price: 8, maturity: 105, xp: 192, gold: 18 }],
-  ["banana", { name: "香蕉树", unlockLevel: 20, sprite: "./assets/banana-original-two-bunches.webp", height: 170, price: 10, maturity: 135, xp: 250, gold: 25 }],
-  ["cherry", { name: "樱花树", unlockLevel: 25, sprite: "./assets/cherry.webp", height: 155, price: 12, maturity: 165, xp: 312, gold: 34 }],
-  ["reeds", { name: "芦苇", unlockLevel: 5, sprite: "./assets/reeds.webp", height: 111, matureScale: 1.25, price: 4, maturity: 75, xp: 88, gold: 11 }],
-  ["rice", { name: "水稻", unlockLevel: 1, sprite: "./assets/rice.webp", height: 86, matureScale: 1.4, price: 2, maturity: 60, xp: 42, gold: 8 }],
+  ["fir", { ...plantTiers.fir, name: "小杉树", sprite: "./assets/island-fir.webp", height: 170 }],
+  ["sunflower", { ...plantTiers.sunflower, name: "向日葵", sprite: "./assets/sunflower.webp", height: 122 }],
+  ["banana", { ...plantTiers.banana, name: "香蕉树", sprite: "./assets/banana-original-two-bunches.webp", height: 170 }],
+  ["cherry", { ...plantTiers.cherry, name: "樱花树", sprite: "./assets/cherry.webp", height: 155 }],
+  ["reeds", { ...plantTiers.reeds, name: "芦苇", sprite: "./assets/reeds.webp", height: 111, matureScale: 1.25 }],
+  ["rice", { ...plantTiers.rice, name: "水稻", sprite: "./assets/rice.webp", height: 86, matureScale: 1.4 }],
+  ["carrot", { ...plantTiers.rice, name: "胡萝卜", sprite: "./assets/carrot.webp", height: 116, previousMaturity: 180 }],
+  ["broccoli", { ...plantTiers.reeds, name: "西兰花", sprite: "./assets/broccoli.webp", height: 102, previousMaturity: 195 }],
+  ["cabbage", { ...plantTiers.rice, name: "包菜", sprite: "./assets/cabbage.webp", height: 90, previousMaturity: 210 }],
+  ["corn", { ...plantTiers.sunflower, name: "玉米", sprite: "./assets/corn.webp", height: 164, previousMaturity: 225 }],
+  ["watermelon", { ...plantTiers.fir, name: "西瓜", sprite: "./assets/watermelon.webp", height: 95, previousMaturity: 240 }],
+  ["orange", { ...plantTiers.banana, name: "橘子树", sprite: "./assets/orange.webp", height: 155, previousMaturity: 255 }],
 ]);
 const growthStages = [
   { label: "成熟期", ratio: 1, scale: 1 },
@@ -123,6 +137,14 @@ function migrateField(save) {
   }
   restoreWaitingCrops(fieldSave);
   return fieldSave;
+}
+
+function migrateCropMaturity(tree) {
+  const species = plants.get(tree.species);
+  if (species?.previousMaturity && tree.growthTarget === species.previousMaturity) {
+    return { ...tree, growthTarget: species.maturity };
+  }
+  return tree;
 }
 
 function todayKey() {
@@ -310,6 +332,7 @@ function refreshGrowth() {
 function startingState() {
   return {
     habits: initialHabits(),
+    customActionCategories: [],
     entries: [],
     trees: [],
     reclaimedPlots: [],
@@ -347,6 +370,7 @@ function readState() {
     if (saved && Array.isArray(saved.entries) && Array.isArray(saved.trees)) {
       const habits = Array.isArray(saved.habits) ? saved.habits : initialHabits();
       const entries = pruneActionEntries(saved.entries, habits);
+      const field = migrateField(saved);
       const player = { ...startingState().player, ...saved.player };
       // Scale legacy XP once so the new thresholds preserve existing progress.
       if (saved.player?.xpScale !== 10) {
@@ -355,8 +379,15 @@ function readState() {
       }
       return {
         ...saved,
-        ...migrateField(saved),
+        ...field,
+        trees: field.trees.map(migrateCropMaturity),
+        waitingCrops: Array.isArray(field.waitingCrops) ? field.waitingCrops.map(migrateCropMaturity) : [],
         habits,
+        customActionCategories: Array.isArray(saved.customActionCategories)
+          ? saved.customActionCategories.filter(category =>
+            typeof category?.id === "string" && category.id.startsWith("custom-") &&
+            typeof category.label === "string" && category.label.trim())
+          : [],
         entries,
         seedlings: Array.isArray(saved.seedlings) ? saved.seedlings : [],
         fertilizerPurchases: Array.isArray(saved.fertilizerPurchases) ? saved.fertilizerPurchases : [],
@@ -717,27 +748,47 @@ const plantOptions = new Map();
 const fertilizerOptions = new Map();
 let editingHabit;
 let actionFilter = "all";
+let actionCategories;
 
 function habitCategory(habit) {
   const category = habit?.category;
   return category !== "all" && actionCategories.has(category) ? category : "other";
 }
 
-for (const [category, label] of actionCategories) {
-  const tab = document.createElement("button");
-  tab.type = "button";
-  tab.dataset.category = category;
-  const artwork = document.createElement("i");
-  artwork.className = "action-art action-category-icon";
-  artwork.setAttribute("aria-hidden", "true");
-  tab.append(artwork, label);
-  tab.addEventListener("click", () => {
-    actionFilter = category;
-    filterHabits();
-    el.habits.scrollTop = 0;
-  });
-  el["action-categories"].append(tab);
-  if (category !== "all") el["action-category"].append(new Option(label, category));
+function renderActionCategories() {
+  actionCategories = new Map(defaultActionCategories);
+  actionCategories.delete("other");
+  for (const { id, label } of state.customActionCategories) actionCategories.set(id, label);
+  actionCategories.set("other", defaultActionCategories.get("other"));
+  if (!actionCategories.has(actionFilter)) actionFilter = "all";
+  const tabs = el["action-categories"];
+  const select = el["action-category"];
+  const selected = select.value;
+  tabs.replaceChildren();
+  select.replaceChildren();
+  for (const [category, label] of actionCategories) {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.dataset.category = category;
+    tab.title = label;
+    const artwork = document.createElement("i");
+    artwork.className = "action-category-icon";
+    artwork.setAttribute("aria-hidden", "true");
+    if (category === "all") artwork.innerHTML = icon("action-grid");
+    else if (label.trim() === "摄影") artwork.innerHTML = icon("action-camera");
+    else artwork.classList.add("action-art");
+    const name = document.createElement("span");
+    name.textContent = label;
+    tab.append(artwork, name);
+    tab.addEventListener("click", () => {
+      actionFilter = category;
+      filterHabits();
+      el.habits.scrollTop = 0;
+    });
+    tabs.append(tab);
+    if (category !== "all") select.append(new Option(label, category));
+  }
+  select.value = selected !== "all" && actionCategories.has(selected) ? selected : "other";
 }
 
 function filterHabits() {
@@ -774,6 +825,7 @@ function renderHabits() {
     chip.className = "habit-category";
     chip.dataset.category = category;
     chip.textContent = actionCategories.get(category);
+    chip.title = chip.textContent;
     const copy = document.createElement("span");
     copy.className = "habit-copy";
     const name = document.createElement("strong");
@@ -859,6 +911,38 @@ el["toggle-action-edit"].addEventListener("click", () => {
   setActionEditMode(!el.habits.classList.contains("is-editing"));
 });
 el["add-action"].addEventListener("click", () => openActionEditor());
+const categoryName = el["action-category-name"];
+el["add-action-category"].addEventListener("click", () => {
+  categoryName.value = "";
+  categoryName.setCustomValidity("");
+  el["action-category-status"].textContent = "";
+  el["action-category-dialog"].showModal();
+});
+categoryName.addEventListener("input", () => categoryName.setCustomValidity(""));
+el["action-category-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  const label = categoryName.value.trim();
+  if (!label || [...actionCategories.values()].includes(label)) {
+    categoryName.setCustomValidity(label ? "这个分类已存在。" : "请输入分类名称。");
+    categoryName.reportValidity();
+    return;
+  }
+  const id = `custom-${crypto.randomUUID?.() ?? `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`}`;
+  const previous = state.customActionCategories;
+  state.customActionCategories = [...previous, { id, label }];
+  if (!saveState()) {
+    state.customActionCategories = previous;
+    el["action-category-status"].textContent = "浏览器无法保存此次修改。";
+    return;
+  }
+  actionFilter = id;
+  renderActionCategories();
+  filterHabits();
+  el.habits.scrollTop = 0;
+  el["action-category-dialog"].close();
+  const tabs = el["action-categories"];
+  tabs.scrollLeft = tabs.scrollWidth;
+});
 el["open-action-log"].addEventListener("click", () => showJournal());
 el["action-editor-form"].addEventListener("input", () => {
   const name = el["action-name"].value.trim();
@@ -1128,6 +1212,7 @@ function renderPlots(growingIndex = -1) {
     }
     button.insertAdjacentHTML("beforeend", '<span class="tile-face"></span>');
     if (tree) {
+      button.dataset.species = speciesId(tree);
       if (index === growingIndex) button.classList.add("growing");
       const sprite = document.createElement("img");
       sprite.alt = "";
@@ -1549,6 +1634,28 @@ function hideToolCursor() {
   el.camera.classList.remove("tool-cursor-active");
 }
 
+function syncWorldScene() {
+  const inRanch = location.hash === "#ranch";
+  const ranch = el["ranch-view"];
+  if (ranch.hidden === !inRanch) return;
+
+  const previousLink = el[inRanch ? "open-ranch" : "return-farm"];
+  const moveFocus = document.activeElement === previousLink;
+  if (inRanch) {
+    previewCrop(null);
+    showOrbTooltip(null);
+    hideToolCursor();
+  }
+  el.camera.inert = inRanch;
+  el["farm-tools"].hidden = inRanch;
+  el["pan-hint"].hidden = inRanch;
+  ranch.hidden = !inRanch;
+  el["ranch-navigation"].hidden = !inRanch;
+  if (moveFocus) el[inRanch ? "return-farm" : "open-ranch"].focus({ preventScroll: true });
+}
+
+window.addEventListener("hashchange", syncWorldScene);
+
 el.camera.addEventListener("pointermove", event => {
   if (event.pointerType === "touch" || !fieldTools.get(activeTool)?.followsPointer) {
     hideToolCursor();
@@ -1622,6 +1729,53 @@ function removePlant(tree) {
   (tile.disabled ? el.plots.querySelector(".plot:not(:disabled)") : tile)?.focus({ preventScroll: true });
 }
 
+let visibleXpGain = 0;
+let xpGainTimer;
+
+function showHarvestXp(amount) {
+  const label = el["player-xp-gain"];
+  visibleXpGain += amount;
+  label.textContent = `+${visibleXpGain} EXP`;
+  label.hidden = false;
+  clearTimeout(xpGainTimer);
+  xpGainTimer = setTimeout(() => {
+    label.hidden = true;
+    visibleXpGain = 0;
+  }, 1500);
+}
+
+function flyHarvestXp(source, amount) {
+  if (!source || reduceMotion.matches) {
+    showHarvestXp(amount);
+    return;
+  }
+
+  const target = el["player-xp"].getBoundingClientRect();
+  const x = Math.max(28, Math.min(innerWidth - 28, source.left + source.width / 2));
+  const y = Math.max(28, Math.min(innerHeight - 28, source.top + source.height / 2));
+  const dx = target.left + target.width / 2 - x;
+  const dy = target.top + target.height / 2 - y;
+  const badge = document.createElement("span");
+  badge.className = "harvest-xp-badge";
+  badge.setAttribute("aria-hidden", "true");
+  badge.textContent = "EXP";
+  badge.style.left = `${x}px`;
+  badge.style.top = `${y}px`;
+  el.forest.append(badge);
+
+  const flight = badge.animate([
+    { transform: "translate(-50%, -50%) scale(.8)", opacity: 0 },
+    { transform: "translate(-50%, calc(-50% - 22px)) scale(1)", opacity: 1, offset: .16 },
+    { transform: `translate(calc(-50% + ${dx * .72}px), calc(-50% + ${dy * .72 - 24}px)) scale(1)`, opacity: 1, offset: .76 },
+    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.22)`, opacity: 0 },
+  ], { duration: 1350, fill: "both" });
+  const arrive = () => {
+    badge.remove();
+    showHarvestXp(amount);
+  };
+  void flight.finished.then(arrive, arrive);
+}
+
 function harvest(tree) {
   const id = speciesId(tree);
   const species = plants.get(id);
@@ -1631,10 +1785,12 @@ function harvest(tree) {
     return;
   }
   if (el.journal.open) el.journal.close();
+  const source = el.plots.children[tree.plot]?.querySelector("img")?.getBoundingClientRect();
   state.warehouse[id] = (state.warehouse[id] ?? 0) + 1;
   state.player.xp += species.xp;
   playToolEffect("harvest", tree);
   removePlant(tree);
+  flyHarvestXp(source, species.xp);
   playEffect(cropHarvestSound);
   notify(`收获了 ${species.name}，经验 +${species.xp}。作物已存入仓库。`);
 }
@@ -1647,7 +1803,7 @@ function interactWithPlot(index) {
     return;
   }
   if (!tree) {
-    notify("这块地是空的。再次点击工具图标可退出工具模式。");
+    notify("这块地是空的。右键或再次点击工具图标可退出工具模式。");
     return;
   }
   const species = plants.get(speciesId(tree));
@@ -1683,7 +1839,13 @@ function sellCrop(id) {
   const species = plants.get(id);
   state.warehouse[id]--;
   state.player.gold += species.gold;
-  saveState();
+  if (!saveState()) {
+    state.warehouse[id]++;
+    state.player.gold -= species.gold;
+    el["warehouse-status"].textContent = "浏览器无法保存，出售未完成。";
+    return;
+  }
+  playEffect(cropSellSound);
   updateControls();
   const grid = el["warehouse-grid"];
   const next = grid.querySelector(`[data-sell="${id}"]`) ?? grid.querySelector("button") ?? el["warehouse-search"];
@@ -1818,6 +1980,7 @@ el["warehouse-sale-form"].addEventListener("submit", event => {
     return;
   }
   el["warehouse-sale"].close();
+  playEffect(cropSellSound);
   el["warehouse-search"].value = "";
   updateControls();
   el.warehouse.querySelector(".dialog-close").focus();
@@ -1994,6 +2157,7 @@ const shopOpenSound = new Audio("./assets/sfx/shop-open.mp3");
 const cropWaterSound = new Audio("./assets/sfx/crop-water.mp3");
 const sunCollectSound = new Audio("./assets/sfx/sun-collect.mp3");
 const cropHarvestSound = new Audio("./assets/sfx/crop-harvest.mp3");
+const cropSellSound = new Audio("./assets/sfx/crop-sell.mp3");
 
 function playEffect(sound) {
   sound.currentTime = 0;
@@ -2003,7 +2167,7 @@ function playEffect(sound) {
 document.addEventListener("click", event => {
   if (!event.isTrusted || !(event.target instanceof Element)) return;
   const button = event.target.closest("button:not(:disabled)");
-  if (!button || button.matches("#open-shop, #open-journal, #open-action-log, #collect-life, .orb, #journal-harvest")) return;
+  if (!button || button.matches("#open-shop, #open-actions, #open-journal, #open-action-log, #collect-life, .orb, #journal-harvest, [data-sell], #warehouse-sale-confirm")) return;
   if (button.matches(".plot.planted") && (activeTool === "water" || activeTool === "harvest")) return;
 
   playEffect(buttonClickSound);
@@ -2134,10 +2298,18 @@ el["reclaim-form"].addEventListener("submit", event => {
   notify(`开垦成功，花费 ${next.price} 金币。`);
 });
 window.addEventListener("keydown", event => {
-  if (event.key === "Escape" && activeTool && !document.querySelector("dialog[open]")) selectTool(activeTool);
+  if (event.key === "Escape" && activeTool && !el.camera.inert && !document.querySelector("dialog[open]")) selectTool(activeTool);
+});
+el.forest.addEventListener("contextmenu", event => {
+  if (event.button !== 2 || !activeTool || el.camera.inert || document.querySelector("dialog[open]")) return;
+  event.preventDefault();
+  selectTool(activeTool);
 });
 el.cabin.addEventListener("click", showActions);
-el["open-actions"].addEventListener("click", showActions);
+el["open-actions"].addEventListener("click", () => {
+  showActions();
+  playEffect(journalOpenSound);
+});
 el["open-journal"].addEventListener("click", () => showJournal());
 el["open-shop"].addEventListener("click", () => {
   el["shop-status"].textContent = "";
@@ -2248,6 +2420,7 @@ for (const [id, fertilizer] of fertilizers) {
 }
 function refreshSavedForest() {
   state = readState();
+  renderActionCategories();
   renderHabits();
   renderPlots();
   renderOrbs();
@@ -2278,8 +2451,10 @@ setInterval(() => {
   if (todayKey() !== displayedDay) updateControls();
 }, 30_000);
 
+renderActionCategories();
 renderHabits();
 renderPlots();
 renderOrbs();
 updateControls();
 cameraTo(875, false);
+syncWorldScene();
