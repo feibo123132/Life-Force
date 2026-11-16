@@ -481,10 +481,12 @@
       </div>
       <div class="shop-categories" id="shop-categories" role="group" aria-label="商品分类">
         <button type="button" aria-pressed="true" aria-controls="shop-plants"><svg aria-hidden="true"><use href="#sprout"/></svg>种苗</button>
+        <button type="button" aria-pressed="false" aria-controls="shop-abstract-plants"><svg aria-hidden="true"><use href="#spark"/></svg>抽象种苗</button>
         <button type="button" aria-pressed="false" aria-controls="shop-fertilizer"><svg class="shop-sack" aria-hidden="true"><use href="#fertilizer-sack"/></svg>化肥</button>
       </div>
       <div class="shop-shelf">
-        <div class="shop-grid" id="shop-plants" tabindex="0" role="region" aria-label="种苗"></div>
+        <div class="shop-grid shop-seedlings" id="shop-plants" tabindex="0" role="region" aria-label="种苗"></div>
+        <div class="shop-grid shop-seedlings" id="shop-abstract-plants" tabindex="0" role="region" aria-label="抽象种苗" hidden></div>
         <div class="shop-grid shop-fertilizers" id="shop-fertilizer" hidden></div>
         <p class="shop-status" id="shop-status" role="status"></p>
       </div>

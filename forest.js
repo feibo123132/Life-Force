@@ -55,6 +55,7 @@ const maxSceneZoom = 1.65;
 let sceneZoom = 1;
 const orbCenter = [74.2, 50.2];
 const orbOffsets = [[-1, -.5], [0, -.5], [1, -.5], [-.5, .5], [.5, .5]];
+const maxPlayerLevel = 100;
 const plantTiers = {
   rice: { unlockLevel: 1, price: 2, maturity: 60, xp: 42, gold: 8 },
   reeds: { unlockLevel: 5, price: 4, maturity: 75, xp: 88, gold: 11 },
@@ -62,6 +63,7 @@ const plantTiers = {
   sunflower: { unlockLevel: 15, price: 8, maturity: 105, xp: 192, gold: 18 },
   banana: { unlockLevel: 20, price: 10, maturity: 135, xp: 250, gold: 25 },
   cherry: { unlockLevel: 25, price: 12, maturity: 165, xp: 312, gold: 34 },
+  abstract: { abstract: true, unlockLevel: maxPlayerLevel, price: 14, maturity: 195, xp: 378, gold: 45 },
 };
 const plants = new Map([
   ["fir", { ...plantTiers.fir, name: "小杉树", sprite: "./assets/island-fir.webp", height: 170 }],
@@ -76,6 +78,18 @@ const plants = new Map([
   ["corn", { ...plantTiers.sunflower, name: "玉米", sprite: "./assets/corn.webp", height: 164, previousMaturity: 225 }],
   ["watermelon", { ...plantTiers.fir, name: "西瓜", sprite: "./assets/watermelon.webp", height: 95, previousMaturity: 240 }],
   ["orange", { ...plantTiers.banana, name: "橘子树", sprite: "./assets/orange.webp", height: 155, previousMaturity: 255 }],
+  ["moon-gourd", {
+    ...plantTiers.abstract,
+    name: "奶娃金葫芦",
+    sprite: "./assets/moon-gourd.webp",
+    height: 144,
+  }],
+  ["ikun-tree", {
+    ...plantTiers.abstract,
+    name: "树坤",
+    sprite: "./assets/ikun-tree.webp",
+    height: 170,
+  }],
 ]);
 const growthStages = [
   { label: "成熟期", ratio: 1, scale: 1 },
@@ -87,7 +101,6 @@ const ranks = [
   "林间学徒", "苗圃培育师", "果园管事", "林地守护者", "森林培育大师",
   "林海守望者", "古树培育宗师", "万木贤者", "林海领主", "森林传奇", "生命森林宗师",
 ];
-const maxPlayerLevel = 100;
 const waterBoost = 10;
 const fieldTools = new Map([
   ["dig", { artwork: "dig", followsPointer: true, hint: "选择一株植物，再确认是否清除。" }],
@@ -2397,7 +2410,7 @@ for (const [id, species] of [...plants].sort(([, a], [, b]) => a.unlockLevel - b
   lock.className = "shop-lock";
   lock.innerHTML = icon("lock");
   card.append(lock);
-  el["shop-plants"].append(card);
+  el[species.abstract ? "shop-abstract-plants" : "shop-plants"].append(card);
   plantOptions.set(id, { card, buy, stock, choice, choicePrice });
 }
 for (const [id, fertilizer] of fertilizers) {
