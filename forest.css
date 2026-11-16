@@ -236,7 +236,7 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
   /* Only the leaves and the root shoulder are above the soil. */
   width: calc(var(--plant-width) * .82);
   height: auto;
-  aspect-ratio: 291 / 218;
+  aspect-ratio: 319 / 216;
   object-fit: cover;
   object-position: center top;
   mask-image: linear-gradient(#000 96%, transparent);
