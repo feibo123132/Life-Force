@@ -195,14 +195,19 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
 .scene-image { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; user-select: none; }
 .plots, .orbs { position: absolute; inset: 0; pointer-events: none; }
 .plots { z-index: 1; }
+.plots::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: var(--painted-soil-edge);
+  background: url("./assets/field-grass.webp") 0 0 / 28.71% 51.01%;
+}
 .plot { position: absolute; padding: 0; background: none; border: 0; pointer-events: none; }
 .plot:focus-visible { outline: none; }
 .tile-face { position: absolute; inset: 0; clip-path: var(--tile-outline); pointer-events: auto; }
 .plot.ready .tile-face { background: #ffee9615; }
 .plot:hover .tile-face, .plot:focus-visible .tile-face { background: #fff2a373; }
-.tile-art { position: absolute; inset: 0; clip-path: var(--tile-outline); background: url("./assets/peach-valley-farm.webp") no-repeat; pointer-events: none; }
-.tile-turf { background-image: url("./assets/peach-valley-terrace.webp"); transform: scale(1.04); }
-.tile-art-edge { inset: 0 -1px -1px 0; }
+.tile-art { position: absolute; inset: 0; width: 100%; height: 100%; clip-path: var(--tile-outline); pointer-events: none; }
 .plot.locked .tile-face { pointer-events: none; }
 .plot.locked:has(.expansion-sign) .tile-face { pointer-events: auto; }
 .plot.locked:has(.expansion-sign):is(:hover, :focus-visible) .tile-face { background: #fff2a333; }

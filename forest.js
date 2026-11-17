@@ -26,7 +26,7 @@ for (const [rows, columns] of [[5, 5], [6, 7]]) {
   }
 }
 // Seams of the painted tiles, plus one matching column along the right edge.
-const field = [
+const paintedField = [
   [[845, 373], [909, 406], [977, 439], [1045, 473], [1119, 508], [1200, 545], [1278, 584]],
   [[783, 405], [845, 438], [911, 473], [982, 507], [1056, 544], [1134, 582], [1212, 622]],
   [[716, 438], [778, 474], [844, 508], [916, 543], [990, 582], [1067, 622], [1145, 663]],
@@ -36,21 +36,54 @@ const field = [
 ];
 // Artwork samples from the previous valley's raised grass tiles.
 const turfSamples = [
-  { left: 970, top: 450, width: 141, height: 75 },
-  { left: 899, top: 487, width: 142, height: 78 },
-  { left: 826, top: 525, width: 146, height: 81 },
-  { left: 750, top: 564, width: 150, height: 83 },
-  { left: 669, top: 606, width: 153, height: 87 },
+  [[1036, 450], [1110, 488], [1040, 525], [970, 486]],
+  [[970, 486], [1040, 525], [970, 565], [899, 525]],
+  [[899, 525], [970, 565], [897, 606], [826, 564]],
+  [[826, 564], [897, 606], [821, 648], [750, 607]],
+  [[750, 607], [821, 648], [744, 692], [669, 649]],
 ];
-const fieldRows = 5;
-const fieldColumns = 6;
+const fieldSize = 4;
+const fieldVersion = 2;
 const starterPlots = 5;
-const plots = Array.from({ length: fieldRows * fieldColumns }, (_, index) =>
-  [Math.floor(index / fieldColumns), index % fieldColumns]
-).sort(([aRow, aCol], [bRow, bCol]) => aRow + aCol - bRow - bCol || aCol - bCol);
+function plotOrder(rows, columns) {
+  return Array.from({ length: rows * columns }, (_, index) =>
+    [Math.floor(index / columns), index % columns]
+  ).sort(([aRow, aCol], [bRow, bCol]) => aRow + aCol - bRow - bCol || aCol - bCol);
+}
+
+const paintedRows = paintedField.length - 1;
+const paintedColumns = paintedField[0].length - 1;
+const plots = plotOrder(fieldSize, fieldSize);
+const previousPlots = plotOrder(paintedRows, paintedColumns);
 const firstExpansionPlot = plots.findIndex(([row, column]) => row === 2 && column === 1);
+const interpolatePoint = (from, to, amount) => from.map((value, axis) => value + (to[axis] - value) * amount);
+
+// Retain the existing field footprint while spacing the seams for larger plots.
+const field = Array.from({ length: fieldSize + 1 }, (_, row) => {
+  const oldRow = row * paintedRows / fieldSize;
+  const above = Math.min(Math.floor(oldRow), paintedRows - 1);
+  return Array.from({ length: fieldSize + 1 }, (_, column) => {
+    const oldColumn = column * paintedColumns / fieldSize;
+    const left = Math.min(Math.floor(oldColumn), paintedColumns - 1);
+    const topPoint = interpolatePoint(paintedField[above][left], paintedField[above][left + 1], oldColumn - left);
+    const bottomPoint = interpolatePoint(paintedField[above + 1][left], paintedField[above + 1][left + 1], oldColumn - left);
+    return interpolatePoint(topPoint, bottomPoint, oldRow - above);
+  });
+});
 const sceneWidth = 1672;
 const sceneHeight = 941;
+const paintedSoilEdge = [
+  ...paintedField[0].slice(0, -1),
+  ...paintedField.slice(1).map(row => row.at(-2)),
+  ...paintedField.at(-1).slice(0, -2).reverse(),
+  ...paintedField.slice(1, -1).reverse().map(row => row[0]),
+];
+const soilCenter = paintedField[2][2];
+// Cover the narrow painted border beyond the tile seams.
+const soilCover = `polygon(${paintedSoilEdge.map(point => {
+  const [x, y] = interpolatePoint(soilCenter, point, 1.02);
+  return `${x / sceneWidth * 100}% ${y / sceneHeight * 100}%`;
+}).join(", ")})`;
 const maxSceneZoom = 1.65;
 let sceneZoom = 1;
 const orbCenter = [74.2, 50.2];
@@ -129,26 +162,49 @@ let previewOrb;
 let calendarDate;
 let calendarMonth;
 
-function restoreWaitingCrops(save) {
+function restoreWaitingCrops(save, level = playerLevel(save.player.xp).level) {
   const occupied = new Set(save.trees.map(tree => tree.plot));
   for (const index of plots.keys()) {
     if (!save.waitingCrops.length) break;
-    if (!occupied.has(index)) save.trees.push({ ...save.waitingCrops.shift(), plot: index });
+    if (!occupied.has(index) && isOpenPlot(index, save, level)) {
+      save.trees.push({ ...save.waitingCrops.shift(), plot: index });
+    }
   }
 }
 
 function migrateField(save) {
-  if (Array.isArray(save.reclaimedPlots)) {
-    return { trees: save.trees, reclaimedPlots: save.reclaimedPlots, waitingCrops: save.waitingCrops ?? [] };
+  const priorReclaimed = Array.isArray(save.reclaimedPlots) ? save.reclaimedPlots : [];
+  const priorWaiting = Array.isArray(save.waitingCrops) ? save.waitingCrops : [];
+  if (save.fieldVersion === fieldVersion) {
+    return { fieldVersion, trees: save.trees, reclaimedPlots: priorReclaimed, waitingCrops: priorWaiting };
   }
-  const fieldSave = { trees: [], reclaimedPlots: [], waitingCrops: [] };
+
+  const reclaimed = [...new Set(priorReclaimed)].filter(index =>
+    Number.isInteger(index) && index >= starterPlots && index < previousPlots.length);
+  const fieldSave = {
+    fieldVersion,
+    trees: [],
+    reclaimedPlots: reclaimed.filter(index => index < plots.length),
+    waitingCrops: [],
+  };
+  const reclaimedCount = Math.min(reclaimed.length, plots.length - starterPlots);
+  for (const index of [firstExpansionPlot, ...plots.keys()]) {
+    if (fieldSave.reclaimedPlots.length === reclaimedCount) break;
+    if (!isOpenPlot(index, fieldSave, maxPlayerLevel)) fieldSave.reclaimedPlots.push(index);
+  }
+
   for (const tree of save.trees) {
     const previous = legacyPlots[tree.plot];
-    const plot = previous ? plots.findIndex(([row, col]) => row === previous[0] && col === previous[1]) : -1;
-    if (plot >= 0) fieldSave.trees.push({ ...tree, plot });
-    else fieldSave.waitingCrops.push(tree);
+    const plot = Array.isArray(save.reclaimedPlots) ? tree.plot
+      : previousPlots.findIndex(([row, column]) => row === previous?.[0] && column === previous?.[1]);
+    if (isOpenPlot(plot, fieldSave, maxPlayerLevel) && !fieldSave.trees.some(entry => entry.plot === plot)) {
+      fieldSave.trees.push({ ...tree, plot });
+    } else {
+      fieldSave.waitingCrops.push(tree);
+    }
   }
-  restoreWaitingCrops(fieldSave);
+  fieldSave.waitingCrops.push(...priorWaiting);
+  restoreWaitingCrops(fieldSave, maxPlayerLevel);
   return fieldSave;
 }
 
@@ -336,7 +392,8 @@ function refreshGrowth() {
   const now = Date.now();
   for (const tree of state.trees) {
     const plot = el.plots.children[tree.plot];
-    if (plot) updatePlotGrowth(tree, plot, now);
+    if (!plot?.classList.contains("planted")) continue;
+    updatePlotGrowth(tree, plot, now);
     if (el.journal.open && journalPlot === tree.plot) updateJournalGrowth(tree, now);
   }
   if (previewPlot) updateCropTooltip(now);
@@ -348,6 +405,7 @@ function startingState() {
     customActionCategories: [],
     entries: [],
     trees: [],
+    fieldVersion,
     reclaimedPlots: [],
     waitingCrops: [],
     seedlings: [],
@@ -1023,9 +1081,8 @@ el["action-editor"].addEventListener("close", () => {
   (edit || el["add-action"]).focus();
 });
 
-function playerLevel() {
+function playerLevel(xp = state.player.xp) {
   let level = 1;
-  let xp = state.player.xp;
   let needed = 200;
   while (level < maxPlayerLevel && xp >= needed) {
     xp -= needed;
@@ -1058,28 +1115,46 @@ function updatePlayer() {
   el["reset-avatar"].hidden = !state.player.avatar;
 }
 
-function isOpenPlot(index) {
-  return Number.isInteger(index) && index >= 0 && index < plots.length
-    && (index < starterPlots || state.reclaimedPlots.includes(index));
+function expansionLevel(step) {
+  const expansion = step + 1;
+  return expansion <= 5 ? expansion * 10 : 50 + (expansion - 5) * 5;
+}
+
+function isOpenPlot(index, save = state, level = playerLevel(save.player.xp).level) {
+  if (!Number.isInteger(index) || index < 0 || index >= plots.length) return false;
+  if (index < starterPlots) return true;
+  const step = save.reclaimedPlots.indexOf(index);
+  return step >= 0 && level >= expansionLevel(step);
 }
 
 function nextExpansion() {
-  const canReclaim = index => !isOpenPlot(index) && !state.trees.some(tree => tree.plot === index);
+  const { level } = playerLevel();
+  // An earlier save may have paid for a plot under the old level thresholds.
+  const prepaidStep = state.reclaimedPlots.findIndex((_, step) => level < expansionLevel(step));
+  if (prepaidStep >= 0) {
+    return { index: state.reclaimedPlots[prepaidStep], level: expansionLevel(prepaidStep), price: 0 };
+  }
+  const canReclaim = index => !isOpenPlot(index, state, level) && !state.trees.some(tree => tree.plot === index);
   const index = canReclaim(firstExpansionPlot) ? firstExpansionPlot : plots.findIndex((_, index) => canReclaim(index));
   if (index < 0) return null;
   const step = state.reclaimedPlots.length;
-  return { index, level: 5 * (step + 1), price: 30 + 10 * step };
+  return { index, level: expansionLevel(step), price: 30 + 10 * step };
 }
 
 function updateExpansionDialog() {
   const next = nextExpansion();
-  const eligible = next && playerLevel().level >= next.level;
+  const eligible = next && next.price > 0 && playerLevel().level >= next.level;
   const affordable = next && state.player.gold >= next.price;
   el["reclaim-confirm"].disabled = !eligible || !affordable;
-  el["reclaim-detail"].textContent = next
-    ? `开垦需达到 ${next.level} 级，花费 ${next.price} 金币。你有 ${state.player.gold} 金币。`
-    : "目前没有可开垦的地块。";
-  el["reclaim-status"].textContent = !next ? "" : !eligible ? `升到 ${next.level} 级后即可开垦。` : !affordable ? `还差 ${next.price - state.player.gold} 金币。` : "";
+  if (next?.price === 0) {
+    el["reclaim-detail"].textContent = `这块地已付开垦费，达到 ${next.level} 级后自动开放。`;
+    el["reclaim-status"].textContent = "";
+  } else {
+    el["reclaim-detail"].textContent = next
+      ? `开垦需达到 ${next.level} 级，花费 ${next.price} 金币。你有 ${state.player.gold} 金币。`
+      : "目前没有可开垦的地块。";
+    el["reclaim-status"].textContent = !next ? "" : !eligible ? `升到 ${next.level} 级后即可开垦。` : !affordable ? `还差 ${next.price - state.player.gold} 金币。` : "";
+  }
   return eligible && affordable ? next : null;
 }
 
@@ -1161,8 +1236,12 @@ function updateControls() {
   if (el.warehouse.open) renderWarehouse();
 }
 
+function tilePoints(grid, row, column) {
+  return [grid[row][column], grid[row][column + 1], grid[row + 1][column + 1], grid[row + 1][column]];
+}
+
 function plotGeometry(row, column) {
-  const points = [field[row][column], field[row][column + 1], field[row + 1][column + 1], field[row + 1][column]];
+  const points = tilePoints(field, row, column);
   const xs = points.map(([x]) => x);
   const ys = points.map(([, y]) => y);
   const left = Math.min(...xs);
@@ -1174,12 +1253,32 @@ function plotGeometry(row, column) {
     left, top, width, height,
     rootX: xs.reduce((sum, x) => sum + x, 0) / 4,
     rootY: ys.reduce((sum, y) => sum + y, 0) / 4,
-    corners,
+    corners, points,
   };
 }
 
+// Map the terrain sample's two averaged edge directions onto the new tile.
+function tileArtTransform(source, target) {
+  const axes = ([top, right, bottom, left]) => top.map((value, axis) => ({
+    across: (right[axis] - value + bottom[axis] - left[axis]) / 2,
+    down: (left[axis] - value + bottom[axis] - right[axis]) / 2,
+    center: (value + right[axis] + bottom[axis] + left[axis]) / 4,
+  }));
+  const [sx, sy] = axes(source);
+  const [tx, ty] = axes(target);
+  const determinant = sx.across * sy.down - sy.across * sx.down;
+  const mapping = ({ across, down, center }) => {
+    const x = (across * sy.down - down * sy.across) / determinant;
+    const y = (down * sx.across - across * sx.down) / determinant;
+    return [x, y, center - x * sx.center - y * sy.center];
+  };
+  const [a, c, e] = mapping(tx);
+  const [b, d, f] = mapping(ty);
+  return `matrix(${[a, b, c, d, e, f].join(" ")})`;
+}
+
 function roundedTile(corners) {
-  const toward = (from, to) => from.map((value, axis) => value + (to[axis] - value) * .1);
+  const toward = (from, to) => interpolatePoint(from, to, .1);
   const position = ([x, y]) => `${x}% ${y}%`;
   const segments = corners.map((corner, index) => {
     const before = toward(corner, corners[(index + 3) % 4]);
@@ -1191,19 +1290,21 @@ function roundedTile(corners) {
 
 function renderPlots(growingIndex = -1) {
   const now = Date.now();
+  const { level } = playerLevel();
   const next = nextExpansion();
   previewCrop(null);
+  el.plots.style.setProperty("--painted-soil-edge", soilCover);
   el.plots.replaceChildren();
   for (const [index, [row, column]] of plots.entries()) {
-    const tree = state.trees.find(entry => entry.plot === index);
-    const locked = !tree && !isOpenPlot(index);
+    const locked = !isOpenPlot(index, state, level);
+    const tree = locked ? undefined : state.trees.find(entry => entry.plot === index);
     const hasSign = next?.index === index;
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.plot = index;
     button.className = tree ? "plot planted" : "plot";
     button.classList.toggle("locked", locked);
-    const { left, top, width, height, rootX, rootY, corners } = plotGeometry(row, column);
+    const { left, top, width, height, rootX, rootY, corners, points } = plotGeometry(row, column);
     button.style.left = `${left / sceneWidth * 100}%`;
     button.style.top = `${top / sceneHeight * 100}%`;
     button.style.width = `${width / sceneWidth * 100}%`;
@@ -1212,17 +1313,16 @@ function renderPlots(growingIndex = -1) {
     button.style.setProperty("--root-x", `${(rootX - left) / width * 100}%`);
     button.style.setProperty("--root-y", `${(rootY - top) / height * 100}%`);
     button.style.zIndex = hasSign ? sceneHeight : Math.round(rootY);
-    const extraColumn = column === fieldColumns - 1;
-    if (locked || extraColumn) {
-      const source = locked ? turfSamples[row] : plotGeometry(row, column - 1);
-      const art = document.createElement("span");
-      art.className = extraColumn ? "tile-art tile-art-edge" : "tile-art";
-      if (locked) art.classList.add("tile-turf");
-      art.style.clipPath = roundedTile(corners);
-      art.style.backgroundSize = `${sceneWidth / source.width * 100}% ${sceneHeight / source.height * 100}%`;
-      art.style.backgroundPosition = `${source.left / (sceneWidth - source.width) * 100}% ${source.top / (sceneHeight - source.height) * 100}%`;
-      button.append(art);
-    }
+    const sampleRow = Math.round(row * (paintedRows - 1) / (fieldSize - 1));
+    const sampleColumn = Math.round(column * (paintedColumns - 2) / (fieldSize - 1));
+    const source = locked ? turfSamples[sampleRow] : tilePoints(paintedField, sampleRow, sampleColumn);
+    const artwork = locked ? "peach-valley-terrace" : "peach-valley-farm";
+    button.insertAdjacentHTML("beforeend", `
+      <svg class="tile-art" aria-hidden="true" viewBox="${left} ${top} ${width} ${height}"
+        preserveAspectRatio="none" style="clip-path:${roundedTile(corners)}">
+        <image href="./assets/${artwork}.webp" width="${sceneWidth}" height="${sceneHeight}" transform="${tileArtTransform(source, points)}"/>
+      </svg>
+    `);
     button.insertAdjacentHTML("beforeend", '<span class="tile-face"></span>');
     if (tree) {
       button.dataset.species = speciesId(tree);
@@ -1473,7 +1573,7 @@ function buyFertilizer(id) {
 }
 
 function useFertilizer(id) {
-  if (!el.journal.open) return;
+  if (!el.journal.open || !isOpenPlot(journalPlot)) return;
   const tree = state.trees.find(plant => plant.plot === journalPlot);
   if (!tree) return;
   const status = el["fertilizer-status"];
@@ -1790,6 +1890,7 @@ function flyHarvestXp(source, amount) {
 }
 
 function harvest(tree) {
+  if (!isOpenPlot(tree.plot)) return;
   const id = speciesId(tree);
   const species = plants.get(id);
   if (growthPoints(tree, Date.now()) < maturityTarget(tree)) {
@@ -1809,6 +1910,7 @@ function harvest(tree) {
 }
 
 function interactWithPlot(index) {
+  if (!isOpenPlot(index)) return;
   const tree = state.trees.find(plant => plant.plot === index);
   if (!activeTool) {
     if (tree) showJournal(tree);
@@ -2090,7 +2192,7 @@ function updateRipeningChoices() {
   const current = select.value;
   const now = Date.now();
   const options = state.trees
-    .filter(tree => growthProgress(tree, now).remaining > 0)
+    .filter(tree => isOpenPlot(tree.plot) && growthProgress(tree, now).remaining > 0)
     .sort((left, right) => left.plot - right.plot)
     .map(tree => new Option(`第 ${tree.plot + 1} 块地 · ${plants.get(speciesId(tree)).name}`, String(tree.plot)));
   if (options.length > 1) options.push(new Option("全部未成熟作物", "all"));
@@ -2137,7 +2239,7 @@ el["forest-grow-form"].addEventListener("submit", event => {
   const status = el["forest-grow-status"];
   const now = Date.now();
   const crops = state.trees.filter(tree =>
-    (selected === "all" || String(tree.plot) === selected) && growthProgress(tree, now).remaining > 0);
+    isOpenPlot(tree.plot) && (selected === "all" || String(tree.plot) === selected) && growthProgress(tree, now).remaining > 0);
   if (!crops.length) {
     updateRipeningChoices();
     status.textContent = "所选地块没有等待催熟的作物。";
@@ -2284,7 +2386,7 @@ el["dig-form"].addEventListener("submit", event => {
   event.preventDefault();
   if (!el["dig-dialog"].open) return;
   el["dig-dialog"].close();
-  if (!state.trees.includes(pendingDig)) return;
+  if (!state.trees.includes(pendingDig) || !isOpenPlot(pendingDig.plot)) return;
   playToolEffect("dig", pendingDig);
   removePlant(pendingDig);
   notify("地块已清理。");
@@ -2296,11 +2398,17 @@ el["reclaim-form"].addEventListener("submit", event => {
   const next = updateExpansionDialog();
   if (!next) return;
 
-  state.player.gold -= next.price;
-  state.reclaimedPlots.push(next.index);
+  const previous = state;
+  state = {
+    ...state,
+    player: { ...state.player, gold: state.player.gold - next.price },
+    reclaimedPlots: [...state.reclaimedPlots, next.index],
+    trees: [...state.trees],
+    waitingCrops: [...state.waitingCrops],
+  };
+  restoreWaitingCrops(state);
   if (!saveState()) {
-    state.reclaimedPlots.pop();
-    state.player.gold += next.price;
+    state = previous;
     el["reclaim-status"].textContent = "浏览器无法保存，开垦未完成。";
     return;
   }
@@ -2440,8 +2548,12 @@ function refreshSavedForest() {
   updateControls();
   if (el["forest-controls"].open) updateRipeningChoices();
   if (el.journal.open) {
-    const tree = state.trees.find(item => item.plot === journalPlot);
-    if (tree || journalPlot === undefined) updateJournalRecords(tree);
+    if (journalPlot !== undefined && !isOpenPlot(journalPlot)) {
+      el.journal.close();
+    } else {
+      const tree = state.trees.find(item => item.plot === journalPlot);
+      if (tree || journalPlot === undefined) updateJournalRecords(tree);
+    }
   }
 }
 window.addEventListener("storage", event => forestSave.storageChanged(event.key));
