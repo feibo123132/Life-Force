@@ -89,36 +89,52 @@ let sceneZoom = 1;
 const orbCenter = [74.2, 50.2];
 const orbOffsets = [[-1, -.5], [0, -.5], [1, -.5], [-.5, .5], [.5, .5]];
 const maxPlayerLevel = 100;
-const plantTiers = {
-  rice: { unlockLevel: 1, price: 2, maturity: 60, xp: 42, gold: 8 },
-  reeds: { unlockLevel: 5, price: 4, maturity: 75, xp: 88, gold: 11 },
-  fir: { unlockLevel: 10, price: 6, maturity: 90, xp: 138, gold: 14 },
-  sunflower: { unlockLevel: 15, price: 8, maturity: 105, xp: 192, gold: 18 },
-  banana: { unlockLevel: 20, price: 10, maturity: 135, xp: 250, gold: 25 },
-  cherry: { unlockLevel: 25, price: 12, maturity: 165, xp: 312, gold: 34 },
-  abstract: { abstract: true, unlockLevel: maxPlayerLevel, price: 14, maturity: 195, xp: 378, gold: 45 },
-};
+const levelXpCosts = [0, 200];
+for (let level = 2; level <= maxPlayerLevel; level++) {
+  levelXpCosts.push(levelXpCosts[level - 1] + 80 + 20 * Math.floor(level / 10));
+}
+
+const plantTiers = new Map([1, 10, 20, 30, 40, 50, 55, 60, 65, 70, 75, 80, 85, 90].map((unlockLevel, index) => {
+  const price = 2 * (index + 1);
+  const xp = price * (20 + index);
+  return [unlockLevel, { unlockLevel, price, xp, gold: xp }];
+}));
+const abstractPlantTier = { abstract: true, unlockLevel: maxPlayerLevel, price: 14, maturity: 195, xp: 378, gold: 45 };
+const plantPlaceholder = { sprite: "./assets/warehouse/sprout-tag.webp", height: 105 };
 const plants = new Map([
-  ["fir", { ...plantTiers.fir, name: "小杉树", sprite: "./assets/island-fir.webp", height: 170 }],
-  ["sunflower", { ...plantTiers.sunflower, name: "向日葵", sprite: "./assets/sunflower.webp", height: 122 }],
-  ["banana", { ...plantTiers.banana, name: "香蕉树", sprite: "./assets/banana-original-two-bunches.webp", height: 170 }],
-  ["cherry", { ...plantTiers.cherry, name: "樱花树", sprite: "./assets/cherry.webp", height: 155 }],
-  ["reeds", { ...plantTiers.reeds, name: "芦苇", sprite: "./assets/reeds.webp", height: 111, matureScale: 1.25 }],
-  ["rice", { ...plantTiers.rice, name: "水稻", sprite: "./assets/rice.webp", height: 86, matureScale: 1.4 }],
-  ["carrot", { ...plantTiers.rice, name: "胡萝卜", sprite: "./assets/carrot.webp", height: 116, previousMaturity: 180 }],
-  ["broccoli", { ...plantTiers.reeds, name: "西兰花", sprite: "./assets/broccoli.webp", height: 102, previousMaturity: 195 }],
-  ["cabbage", { ...plantTiers.rice, name: "包菜", sprite: "./assets/cabbage.webp", height: 90, previousMaturity: 210 }],
-  ["corn", { ...plantTiers.sunflower, name: "玉米", sprite: "./assets/corn.webp", height: 164, previousMaturity: 225 }],
-  ["watermelon", { ...plantTiers.fir, name: "西瓜", sprite: "./assets/watermelon.webp", height: 95, previousMaturity: 240 }],
-  ["orange", { ...plantTiers.banana, name: "橘子树", sprite: "./assets/orange.webp", height: 155, previousMaturity: 255 }],
+  ["reeds", { ...plantTiers.get(1), name: "芦苇", sprite: "./assets/reeds.webp", maturity: 75, height: 111, matureScale: 1.25 }],
+  ["rice", { ...plantTiers.get(1), name: "水稻", category: "grain", sprite: "./assets/rice.webp", maturity: 60, height: 86, matureScale: 1.4 }],
+  ["carrot", { ...plantTiers.get(1), name: "胡萝卜", category: "vegetable", sprite: "./assets/carrot.webp", maturity: 60, height: 116, previousMaturity: 180 }],
+  ["broccoli", { ...plantTiers.get(10), name: "西兰花", category: "vegetable", sprite: "./assets/broccoli.webp", maturity: 75, height: 102, previousMaturity: 195 }],
+  ["cabbage", { ...plantTiers.get(10), name: "包菜", category: "vegetable", sprite: "./assets/cabbage.webp", maturity: 60, height: 90, previousMaturity: 210 }],
+  ["lucky-clover", { ...plantTiers.get(10), ...plantPlaceholder, name: "幸运草", maturity: 75 }],
+  ["watermelon", { ...plantTiers.get(20), name: "西瓜", category: "fruit", sprite: "./assets/watermelon.webp", maturity: 90, height: 95, previousMaturity: 240 }],
+  ["cantaloupe", { ...plantTiers.get(20), ...plantPlaceholder, name: "哈密瓜", category: "fruit", maturity: 90 }],
+  ["sunflower", { ...plantTiers.get(30), name: "向日葵", category: "flower", sprite: "./assets/sunflower.webp", maturity: 105, height: 122 }],
+  ["fir", { ...plantTiers.get(30), name: "杉树", sprite: "./assets/island-fir.webp", maturity: 90, height: 170 }],
+  ["corn", { ...plantTiers.get(40), name: "玉米", category: "grain", sprite: "./assets/corn.webp", maturity: 105, height: 164, previousMaturity: 225 }],
+  ["pink-rose", { ...plantTiers.get(40), ...plantPlaceholder, name: "粉玫瑰", category: "flower", maturity: 135 }],
+  ["banana", { ...plantTiers.get(50), name: "香蕉树", category: "fruit", sprite: "./assets/banana-original-two-bunches.webp", maturity: 135, height: 170 }],
+  ["mock-orange", { ...plantTiers.get(50), ...plantPlaceholder, name: "山梅花", category: "flower", maturity: 165 }],
+  ["orange", { ...plantTiers.get(55), name: "橘子树", category: "fruit", sprite: "./assets/orange.webp", maturity: 135, height: 155, previousMaturity: 255 }],
+  ["sundae-tree", { ...plantTiers.get(55), ...plantPlaceholder, name: "圣代树", maturity: 180 }],
+  ["white-birch", { ...plantTiers.get(60), ...plantPlaceholder, name: "白桦", maturity: 195 }],
+  ["osmanthus", { ...plantTiers.get(65), ...plantPlaceholder, name: "桂花", category: "flower", maturity: 210 }],
+  ["willow", { ...plantTiers.get(65), ...plantPlaceholder, name: "柳树", maturity: 210 }],
+  ["ginkgo", { ...plantTiers.get(70), ...plantPlaceholder, name: "银杏", maturity: 225 }],
+  ["cherry", { ...plantTiers.get(75), name: "樱花树", category: "flower", sprite: "./assets/cherry.webp", maturity: 165, height: 155 }],
+  ["plum-blossom", { ...plantTiers.get(80), ...plantPlaceholder, name: "梅花", category: "flower", maturity: 255 }],
+  ["pear-treehouse", { ...plantTiers.get(85), ...plantPlaceholder, name: "梨子树屋", category: "fruit", maturity: 270 }],
+  ["rainbow-eucalyptus", { ...plantTiers.get(85), ...plantPlaceholder, name: "彩虹桉", maturity: 270 }],
+  ["golden-trumpet-tree", { ...plantTiers.get(90), ...plantPlaceholder, name: "黄花风铃木", category: "flower", maturity: 285 }],
   ["moon-gourd", {
-    ...plantTiers.abstract,
+    ...abstractPlantTier,
     name: "奶娃金葫芦",
     sprite: "./assets/moon-gourd.webp",
     height: 144,
   }],
   ["ikun-tree", {
-    ...plantTiers.abstract,
+    ...abstractPlantTier,
     name: "树坤",
     sprite: "./assets/ikun-tree.webp",
     height: 170,
@@ -130,6 +146,10 @@ const growthStages = [
   { label: "幼苗期", ratio: 0, scale: 0.43, asset: "seedling" },
 ];
 const naturalGrowthInterval = 600_000;
+const plantPickerCategories = {
+  all: ["全部", "🍃"], grain: ["粮食", "🌾"], vegetable: ["蔬菜", "🥕"],
+  flower: ["花卉", "🌸"], fruit: ["水果", "🌳"], other: ["其它", "🌿"],
+};
 const ranks = [
   "林间学徒", "苗圃培育师", "果园管事", "林地守护者", "森林培育大师",
   "林海守望者", "古树培育宗师", "万木贤者", "林海领主", "森林传奇", "生命森林宗师",
@@ -154,6 +174,7 @@ const calendarMonthFormat = new Intl.DateTimeFormat("zh-CN", { year: "numeric", 
 const el = Object.fromEntries([...document.querySelectorAll("[id]")].map(node => [node.id, node]));
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let selectedPlot;
+let selectedPlant;
 let journalPlot;
 let activeTool;
 let pendingDig;
@@ -161,12 +182,13 @@ let previewPlot;
 let previewOrb;
 let calendarDate;
 let calendarMonth;
+let inExperiment = false;
 
-function restoreWaitingCrops(save, level = playerLevel(save.player.xp).level) {
+function restoreWaitingCrops(save) {
   const occupied = new Set(save.trees.map(tree => tree.plot));
   for (const index of plots.keys()) {
     if (!save.waitingCrops.length) break;
-    if (!occupied.has(index) && isOpenPlot(index, save, level)) {
+    if (!occupied.has(index) && isOpenPlot(index, save)) {
       save.trees.push({ ...save.waitingCrops.shift(), plot: index });
     }
   }
@@ -190,21 +212,21 @@ function migrateField(save) {
   const reclaimedCount = Math.min(reclaimed.length, plots.length - starterPlots);
   for (const index of [firstExpansionPlot, ...plots.keys()]) {
     if (fieldSave.reclaimedPlots.length === reclaimedCount) break;
-    if (!isOpenPlot(index, fieldSave, maxPlayerLevel)) fieldSave.reclaimedPlots.push(index);
+    if (!isOpenPlot(index, fieldSave)) fieldSave.reclaimedPlots.push(index);
   }
 
   for (const tree of save.trees) {
     const previous = legacyPlots[tree.plot];
     const plot = Array.isArray(save.reclaimedPlots) ? tree.plot
       : previousPlots.findIndex(([row, column]) => row === previous?.[0] && column === previous?.[1]);
-    if (isOpenPlot(plot, fieldSave, maxPlayerLevel) && !fieldSave.trees.some(entry => entry.plot === plot)) {
+    if (isOpenPlot(plot, fieldSave) && !fieldSave.trees.some(entry => entry.plot === plot)) {
       fieldSave.trees.push({ ...tree, plot });
     } else {
       fieldSave.waitingCrops.push(tree);
     }
   }
   fieldSave.waitingCrops.push(...priorWaiting);
-  restoreWaitingCrops(fieldSave, maxPlayerLevel);
+  restoreWaitingCrops(fieldSave);
   return fieldSave;
 }
 
@@ -341,16 +363,22 @@ function showOrbTooltip(button) {
   updateOrbTooltip();
 }
 
+function growthStageSprite(id, stage) {
+  const { sprite } = plants.get(id);
+  return stage.asset && sprite !== plantPlaceholder.sprite ? `./assets/growth/${id}-${stage.asset}.webp` : sprite;
+}
+
 function plantAppearance(tree, now) {
   const id = speciesId(tree);
   const species = plants.get(id);
   const points = growthPoints(tree, now);
   const stage = growthStages.find(candidate => points >= Math.ceil(maturityTarget(tree) * candidate.ratio));
-  const scale = stage.ratio === 1 ? (species.matureScale ?? stage.scale) : stage.scale;
+  const stageScale = stage.ratio === 1 ? (species.matureScale ?? stage.scale) : stage.scale;
+  const scale = stageScale * 1.2;
   return {
     name: species.name,
     label: stage.label,
-    sprite: stage.asset ? `./assets/growth/${id}-${stage.asset}.webp` : species.sprite,
+    sprite: growthStageSprite(id, stage),
     height: species.height * scale,
     width: 62 * scale,
   };
@@ -407,12 +435,13 @@ function startingState() {
     trees: [],
     fieldVersion,
     reclaimedPlots: [],
+    pendingExpansionPlots: [],
     waitingCrops: [],
     seedlings: [],
     fertilizerPurchases: [],
     spentPlantEnergyIds: [],
     warehouse: {},
-    player: { name: "森林旅人", xp: 0, gold: 0, xpScale: 10 },
+    player: { name: "森林旅人", xp: 0, gold: 0, xpScale: 10, xpCurveVersion: 2 },
   };
 }
 
@@ -423,21 +452,35 @@ function pruneActionEntries(entries, habits) {
   return remaining.filter(entry => entry.kind !== dailyActionBonus || (totals.get(entry.date) ?? 0) >= dailyActionGoal);
 }
 
+const forestStorage = {
+  getItem: key => localStorage.getItem(key),
+  setItem: (key, data) => localStorage.setItem(key, data),
+};
 const forestSave = createForestSaveSync({
   legacyKey: storageKey,
-  storage: {
-    getItem: key => localStorage.getItem(key),
-    setItem: (key, data) => localStorage.setItem(key, data),
+  storage: forestStorage,
+  onChange: () => {
+    if (inExperiment) readState();
+    else refreshSavedForest();
   },
-  onChange: refreshSavedForest,
   onStatus: updateForestSyncStatus,
 });
+const experimentSave = createForestSaveSync({
+  legacyKey: "life-forest-experiment-v1",
+  storage: forestStorage,
+  onChange: () => { if (inExperiment) refreshSavedForest(); },
+  onStatus: () => {},
+});
 
-function readState() {
+function activeForestSave() {
+  return inExperiment ? experimentSave : forestSave;
+}
+
+function readState(save = forestSave) {
   try {
     // Discard playtest saves without affecting progress made after the reset.
-    localStorage.removeItem(demoStorageKey);
-    const saved = forestSave.read();
+    if (save === forestSave) localStorage.removeItem(demoStorageKey);
+    const saved = save.read();
     if (saved && Array.isArray(saved.entries) && Array.isArray(saved.trees)) {
       const habits = Array.isArray(saved.habits) ? saved.habits : initialHabits();
       const entries = pruneActionEntries(saved.entries, habits);
@@ -448,9 +491,25 @@ function readState() {
         player.xp *= 10;
         player.xpScale = 10;
       }
+      if (saved.player?.xpCurveVersion !== 2) {
+        player.xp = migratePlayerXp(player.xp);
+        player.xpCurveVersion = 2;
+      }
+      const pendingExpansionPlots = Array.isArray(saved.pendingExpansionPlots) ? [...saved.pendingExpansionPlots] : [];
+      const { level } = playerLevel(player.xp);
+      const earlyStep = field.reclaimedPlots.findIndex((_, step) => level < expansionLevel(step));
+      if (earlyStep >= 0) {
+        // Return fees from the old thresholds and leave those tiles pending a manual purchase.
+        for (let step = earlyStep; step < field.reclaimedPlots.length; step++) {
+          player.gold += expansionPrice(step);
+        }
+        pendingExpansionPlots.unshift(...field.reclaimedPlots.slice(earlyStep));
+        field.reclaimedPlots = field.reclaimedPlots.slice(0, earlyStep);
+      }
       return {
         ...saved,
         ...field,
+        pendingExpansionPlots,
         trees: field.trees.map(migrateCropMaturity),
         waitingCrops: Array.isArray(field.waitingCrops) ? field.waitingCrops.map(migrateCropMaturity) : [],
         habits,
@@ -470,16 +529,20 @@ function readState() {
   } catch {
     el["storage-note"].textContent = "体验版 · 当前浏览器无法读取本地记录";
   }
-  return startingState();
+  const initial = startingState();
+  if (save === experimentSave) {
+    initial.entries.push({ id: "experiment:starter", kind: "sample", reward: 100, collected: true });
+  }
+  return initial;
 }
 
 let state = readState();
 let noticeTimer;
 let displayedDay;
 
-function saveState() {
+function saveState(snapshot = state, save = activeForestSave()) {
   try {
-    forestSave.write(state);
+    save.write(snapshot);
     return true;
   } catch {
     el["storage-note"].textContent = "体验版 · 当前浏览器无法保存，记录仅在本次打开时有效";
@@ -623,9 +686,14 @@ el.plots.addEventListener("focusout", event => {
 });
 
 function showActions() {
+  if (todayKey() !== displayedDay) updateControls();
   setActionEditMode(false);
   el["action-status"].textContent = "";
   el.actions.showModal();
+}
+
+function actionAvailableOn(habit, date, today) {
+  return !habit.onlyOn || (habit.onlyOn === date && date === today);
 }
 
 function dailyActionTotals(entries) {
@@ -683,13 +751,15 @@ function renderActionCalendar() {
   el["action-calendar-month"].textContent = calendarMonthFormat.format(calendarMonth);
   el["action-calendar-next"].disabled = calendarMonth.toISOString().slice(0, 7) >= today.slice(0, 7);
   el["action-calendar-date"].textContent = `${calendarDate.slice(0, 4)}年${formatDate(calendarDate)}`;
-  el["action-calendar-count"].textContent = `已完成 ${totals.get(calendarDate) ?? 0} / ${state.habits.length}`;
-
   const completed = new Map(state.entries.filter(entry => entry.date === calendarDate).map(entry => [entry.kind, entry]));
-  const habits = state.habits.map(habit => {
+  const calendarHabits = state.habits.filter(habit =>
+    actionAvailableOn(habit, calendarDate, today) || completed.has(habit.id));
+  el["action-calendar-count"].textContent = `已完成 ${totals.get(calendarDate) ?? 0} / ${calendarHabits.length}`;
+  const habits = calendarHabits.map(habit => {
     const entry = completed.get(habit.id);
     const button = document.createElement("button");
     button.type = "button";
+    button.disabled = !actionAvailableOn(habit, calendarDate, today);
     button.dataset.calendarHabit = habit.id;
     button.setAttribute("aria-pressed", String(Boolean(entry)));
     const name = document.createElement("strong");
@@ -729,9 +799,9 @@ for (const [id, step] of [["action-calendar-prev", -1], ["action-calendar-next",
   });
 }
 
-function spentEnergyIds() {
-  const purchases = [...state.trees, ...state.waitingCrops, ...state.seedlings, ...state.fertilizerPurchases];
-  return new Set([...state.spentPlantEnergyIds, ...purchases.flatMap(purchase => purchase.energyIds)]);
+function spentEnergyIds(snapshot = state) {
+  const purchases = [...snapshot.trees, ...snapshot.waitingCrops, ...snapshot.seedlings, ...snapshot.fertilizerPurchases];
+  return new Set([...snapshot.spentPlantEnergyIds, ...purchases.flatMap(purchase => purchase.energyIds)]);
 }
 
 function actionReward(item) {
@@ -873,13 +943,21 @@ function filterHabits() {
   }
   el.habits.classList.toggle("is-scrollable", visibleCount > 5);
   el["action-empty"].hidden = visibleCount > 0;
-  el["action-empty"].textContent = state.habits.length ? "这个分类还没有行动。" : "还没有行动，点击新增行动开始记录。";
+  el["action-empty"].textContent = habitButtons.size ? "这个分类还没有行动。" : "还没有行动，点击新增行动开始记录。";
 }
 
-function renderHabits() {
+function actionPraiseLabel(score) {
+  if (!Number.isInteger(score) || score < 80 || score > 100) return "";
+  const qualities = ["优秀", "精良", "稀有", "传奇"];
+  const tier = Math.min(3, Math.floor((score - 80) / 5));
+  return `${qualities[tier]} · ${score} 分`;
+}
+
+function renderHabits(day = todayKey()) {
   habitButtons.clear();
   el.habits.replaceChildren();
   for (const habit of state.habits) {
+    if (!actionAvailableOn(habit, day, day)) continue;
     const category = habitCategory(habit);
     const row = document.createElement("div");
     row.className = "action-row";
@@ -902,10 +980,11 @@ function renderHabits() {
     const name = document.createElement("strong");
     name.textContent = habit.name;
     copy.append(name);
-    if (habit.description) {
+    const detail = [habit.onlyOn && "仅今天", actionPraiseLabel(habit.praiseScore), habit.description].filter(Boolean).join(" · ");
+    if (detail) {
       const description = document.createElement("small");
-      description.textContent = habit.description;
-      description.title = habit.description;
+      description.textContent = detail;
+      description.title = detail;
       copy.append(description);
     }
     const side = document.createElement("span");
@@ -940,13 +1019,21 @@ function renderHabits() {
 
 function openActionEditor(id) {
   const habit = state.habits.find(item => item.id === id);
+  const day = todayKey();
+  if (habit && !actionAvailableOn(habit, day, day)) {
+    updateControls();
+    return;
+  }
   editingHabit = habit?.id;
   el["action-editor-title"].textContent = habit ? "编辑行动" : "新增行动";
   el["action-name"].value = habit?.name ?? "";
   el["action-name"].setCustomValidity("");
   el["action-description"].value = habit?.description ?? "";
   el["action-category"].value = habit ? habitCategory(habit) : actionFilter === "all" ? "other" : actionFilter;
+  el["action-repeat"].value = habit?.onlyOn ? "once" : "daily";
   el["action-reward"].value = actionReward(habit);
+  el["action-praise"].value = habit?.praiseScore ?? "";
+  el["action-praise-quality"].value = actionPraiseLabel(habit?.praiseScore);
   el["action-editor-status"].textContent = "";
   el["delete-action"].hidden = !habit;
   el["create-action"].hidden = Boolean(habit);
@@ -1015,7 +1102,10 @@ el["action-category-form"].addEventListener("submit", event => {
   tabs.scrollLeft = tabs.scrollWidth;
 });
 el["open-action-log"].addEventListener("click", () => showJournal());
+const actionPraiseInput = el["action-praise"];
 el["action-editor-form"].addEventListener("input", () => {
+  const praiseLabel = actionPraiseLabel(actionPraiseInput.valueAsNumber);
+  el["action-praise-quality"].value = praiseLabel;
   const name = el["action-name"].value.trim();
   el["action-name"].setCustomValidity(name ? "" : "请输入行动名称。");
   if (!editingHabit) return;
@@ -1028,13 +1118,25 @@ el["action-editor-form"].addEventListener("input", () => {
     el["action-editor-status"].textContent = "请输入大于等于 1 的整数作为生命力奖励。";
     return;
   }
-  if (!state.habits.some(habit => habit.id === editingHabit)) {
+  if (!actionPraiseInput.validity.valid) {
+    el["action-editor-status"].textContent = "赞美指数请输入 80–100 的整数，或留空。";
+    return;
+  }
+  const habit = state.habits.find(item => item.id === editingHabit);
+  if (!habit) {
     el["action-editor-status"].textContent = "该行动已被删除。";
+    return;
+  }
+  const day = todayKey();
+  if (!actionAvailableOn(habit, day, day)) {
+    el["action-editor-status"].textContent = "这项行动已过期。";
     return;
   }
   const description = el["action-description"].value.trim();
   const category = el["action-category"].value;
-  const habits = state.habits.map(habit => habit.id === editingHabit ? { ...habit, name, description, category, reward } : habit);
+  const onlyOn = el["action-repeat"].value === "once" ? day : undefined;
+  const praiseScore = praiseLabel ? actionPraiseInput.valueAsNumber : undefined;
+  const habits = state.habits.map(item => item === habit ? { ...item, name, description, category, reward, onlyOn, praiseScore } : item);
   if (saveHabits(habits)) el["action-editor-status"].textContent = "已保存";
 });
 el["action-editor-form"].addEventListener("submit", event => {
@@ -1049,8 +1151,10 @@ el["action-editor-form"].addEventListener("submit", event => {
   const description = el["action-description"].value.trim();
   const category = el["action-category"].value;
   const reward = el["action-reward"].valueAsNumber;
+  const praiseScore = actionPraiseInput.value ? actionPraiseInput.valueAsNumber : undefined;
   const id = crypto.randomUUID?.() ?? `action-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
-  const habit = { id, name, description, category, reward };
+  const onlyOn = el["action-repeat"].value === "once" ? todayKey() : undefined;
+  const habit = { id, name, description, category, reward, onlyOn, praiseScore };
   if (saveHabits([...state.habits, habit])) el["action-editor"].close();
 });
 el["delete-action"].addEventListener("click", () => {
@@ -1083,13 +1187,25 @@ el["action-editor"].addEventListener("close", () => {
 
 function playerLevel(xp = state.player.xp) {
   let level = 1;
-  let needed = 200;
-  while (level < maxPlayerLevel && xp >= needed) {
-    xp -= needed;
+  while (level < maxPlayerLevel && xp >= levelXpCosts[level]) {
+    xp -= levelXpCosts[level];
     level++;
-    needed += 80;
   }
-  return { level, xp, needed };
+  return { level, xp, needed: levelXpCosts[level] };
+}
+
+function migratePlayerXp(xp) {
+  let level = 1;
+  let oldCost = 200;
+  let newXp = 0;
+  while (level < maxPlayerLevel && xp >= oldCost) {
+    xp -= oldCost;
+    newXp += levelXpCosts[level];
+    level++;
+    oldCost += 80;
+  }
+  const progress = level === maxPlayerLevel ? xp : Math.floor(xp * levelXpCosts[level] / oldCost);
+  return newXp + progress;
 }
 
 function isPlantUnlocked(unlockLevel, level = playerLevel().level) {
@@ -1120,53 +1236,48 @@ function expansionLevel(step) {
   return expansion <= 5 ? expansion * 10 : 50 + (expansion - 5) * 5;
 }
 
-function isOpenPlot(index, save = state, level = playerLevel(save.player.xp).level) {
-  if (!Number.isInteger(index) || index < 0 || index >= plots.length) return false;
-  if (index < starterPlots) return true;
-  const step = save.reclaimedPlots.indexOf(index);
-  return step >= 0 && level >= expansionLevel(step);
+function expansionPrice(step) {
+  return 30 + 10 * step;
+}
+
+function isOpenPlot(index, save = state) {
+  return Number.isInteger(index) && index >= 0 && index < plots.length
+    && (index < starterPlots || save.reclaimedPlots.includes(index));
 }
 
 function nextExpansion() {
-  const { level } = playerLevel();
-  // An earlier save may have paid for a plot under the old level thresholds.
-  const prepaidStep = state.reclaimedPlots.findIndex((_, step) => level < expansionLevel(step));
-  if (prepaidStep >= 0) {
-    return { index: state.reclaimedPlots[prepaidStep], level: expansionLevel(prepaidStep), price: 0 };
-  }
-  const canReclaim = index => !isOpenPlot(index, state, level) && !state.trees.some(tree => tree.plot === index);
-  const index = canReclaim(firstExpansionPlot) ? firstExpansionPlot : plots.findIndex((_, index) => canReclaim(index));
+  const canReclaim = index => !isOpenPlot(index) && !state.trees.some(tree => tree.plot === index);
+  const index = state.pendingExpansionPlots[0]
+    ?? (canReclaim(firstExpansionPlot) ? firstExpansionPlot : plots.findIndex((_, index) => canReclaim(index)));
   if (index < 0) return null;
   const step = state.reclaimedPlots.length;
-  return { index, level: expansionLevel(step), price: 30 + 10 * step };
+  return { index, level: expansionLevel(step), price: expansionPrice(step) };
 }
 
 function updateExpansionDialog() {
   const next = nextExpansion();
-  const eligible = next && next.price > 0 && playerLevel().level >= next.level;
+  const eligible = next && playerLevel().level >= next.level;
   const affordable = next && state.player.gold >= next.price;
   el["reclaim-confirm"].disabled = !eligible || !affordable;
-  if (next?.price === 0) {
-    el["reclaim-detail"].textContent = `这块地已付开垦费，达到 ${next.level} 级后自动开放。`;
-    el["reclaim-status"].textContent = "";
-  } else {
-    el["reclaim-detail"].textContent = next
-      ? `开垦需达到 ${next.level} 级，花费 ${next.price} 金币。你有 ${state.player.gold} 金币。`
-      : "目前没有可开垦的地块。";
-    el["reclaim-status"].textContent = !next ? "" : !eligible ? `升到 ${next.level} 级后即可开垦。` : !affordable ? `还差 ${next.price - state.player.gold} 金币。` : "";
-  }
+  el["reclaim-detail"].textContent = next
+    ? `开垦需达到 ${next.level} 级，花费 ${next.price} 金币。你有 ${state.player.gold} 金币。`
+    : "目前没有可开垦的地块。";
+  el["reclaim-status"].textContent = !next ? "" : !eligible ? `升到 ${next.level} 级后即可开垦。` : !affordable ? `还差 ${next.price - state.player.gold} 金币。` : "";
   return eligible && affordable ? next : null;
 }
 
 function updateControls() {
   const day = todayKey();
+  if (day !== displayedDay) renderHabits(day);
   displayedDay = day;
   updatePlayer();
   const completed = new Map(state.entries.filter(entry => entry.date === day).map(entry => [entry.kind, entry]));
   let completedCount = 0;
   let possibleReward = 0;
   for (const habit of state.habits) {
-    const { button, rewardAmount } = habitButtons.get(habit.id);
+    const controls = habitButtons.get(habit.id);
+    if (!controls) continue;
+    const { button, rewardAmount } = controls;
     const entry = completed.get(habit.id);
     const done = Boolean(entry);
     const reward = actionReward(entry ?? habit);
@@ -1174,14 +1285,14 @@ function updateControls() {
     possibleReward += reward;
     button.setAttribute("aria-pressed", String(done));
     button.setAttribute("aria-label", habit.name);
-    button.setAttribute("aria-description", [actionCategories.get(habitCategory(habit)), habit.description, `${reward} 点生命力`].filter(Boolean).join("，"));
+    button.setAttribute("aria-description", [actionCategories.get(habitCategory(habit)), habit.onlyOn && "仅今天", actionPraiseLabel(habit.praiseScore), habit.description, `${reward} 点生命力`].filter(Boolean).join("，"));
     button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成" : done ? "取消完成" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
   }
   const count = document.createElement("span");
   count.textContent = completedCount;
-  el["action-count"].replaceChildren(count, ` / ${state.habits.length}`);
-  const progress = state.habits.length ? completedCount / state.habits.length : 0;
+  el["action-count"].replaceChildren(count, ` / ${habitButtons.size}`);
+  const progress = habitButtons.size ? completedCount / habitButtons.size : 0;
   el["action-progress"].style.setProperty("--progress", `${progress * 100}%`);
   for (const [index, leaf] of [...el["action-progress"].querySelectorAll("i")].entries()) {
     leaf.classList.toggle("is-complete", index < Math.floor(progress * 5));
@@ -1197,7 +1308,6 @@ function updateControls() {
   const pending = state.entries.reduce((total, entry) => entry.collected ? total : total + actionReward(entry), 0);
   el.balance.textContent = balance;
   el["shop-balance"].textContent = balance;
-  el["plant-balance"].textContent = balance;
   el["collect-life"].disabled = pending === 0;
   el["pending-life"].hidden = pending === 0;
   el["pending-life"].textContent = `+${pending}`;
@@ -1209,7 +1319,7 @@ function updateControls() {
   const unlockButton = el["forest-unlock-plants"];
   unlockButton.disabled = [...plants.values()].every(plant => isPlantUnlocked(plant.unlockLevel, level));
   el["forest-unlock-status"].textContent = unlockButton.disabled ? "全部可种植物已解锁。" : "";
-  for (const [id, { card, buy, stock, choice, choicePrice }] of plantOptions) {
+  for (const [id, { card, buy, stock, choicePrice }] of plantOptions) {
     const { name, price, unlockLevel } = plants.get(id);
     const owned = state.seedlings.filter(seedling => seedling.species === id).length;
     const locked = !isPlantUnlocked(unlockLevel, level);
@@ -1218,9 +1328,10 @@ function updateControls() {
     buy.textContent = locked ? `${unlockLevel} 级解锁` : "购买";
     buy.setAttribute("aria-label", locked ? `${name}，${unlockLevel} 级解锁` : `购买${name}，${price} 点生命力`);
     stock.textContent = `库存 ${owned}`;
-    choice.disabled = !owned && (locked || balance < price);
-    choicePrice.textContent = owned ? `使用库存（${owned}）` : locked ? `${unlockLevel} 级解锁` : `${price} 点生命力`;
+    choicePrice.hidden = Boolean(owned) || !locked;
+    choicePrice.textContent = `${unlockLevel} 级解锁`;
   }
+  if (el["plant-picker"].open) updatePlantPickerAvailability(balance);
   for (const [id, { buy, stock, use, useStock }] of fertilizerOptions) {
     const owned = state.fertilizerPurchases.filter(purchase => purchase.id === id && !purchase.used).length;
     buy.disabled = balance < fertilizers.get(id).price;
@@ -1290,13 +1401,12 @@ function roundedTile(corners) {
 
 function renderPlots(growingIndex = -1) {
   const now = Date.now();
-  const { level } = playerLevel();
   const next = nextExpansion();
   previewCrop(null);
   el.plots.style.setProperty("--painted-soil-edge", soilCover);
   el.plots.replaceChildren();
   for (const [index, [row, column]] of plots.entries()) {
-    const locked = !isOpenPlot(index, state, level);
+    const locked = !isOpenPlot(index);
     const tree = locked ? undefined : state.trees.find(entry => entry.plot === index);
     const hasSign = next?.index === index;
     const button = document.createElement("button");
@@ -1400,10 +1510,13 @@ function actionRecordLabel(entry) {
 }
 
 function toggleActionCompletion(kind, date = todayKey(), status = el["action-status"]) {
-  if (date > todayKey()) return;
+  const day = todayKey();
+  if (day !== displayedDay) updateControls();
+  const habit = state.habits.find(item => item.id === kind);
+  if (!habit || date > day || !actionAvailableOn(habit, date, day)) return;
   const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind);
   if (index < 0) {
-    record(kind, date, status);
+    record(habit, date, status);
     return;
   }
 
@@ -1438,26 +1551,24 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
   status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
 }
 
-function addActionEntry(habit, date, source) {
+function addActionEntry(habit, date, source, snapshot = state) {
   const { id: kind } = habit;
   const actionLabel = habit.description ? `${habit.name} · ${habit.description}` : habit.name;
   const reward = actionReward(habit);
-  state.entries.push({ id: `${date}:${kind}`, date, kind, actionLabel, reward, collected: false, source });
+  snapshot.entries.push({ id: `${date}:${kind}`, date, kind, actionLabel, reward, collected: false, source });
   const bonusId = `${date}:${dailyActionBonus}`;
-  const earnedBonus = (dailyActionTotals(state.entries).get(date) ?? 0) >= dailyActionGoal
-    && !state.entries.some(entry => entry.id === bonusId);
+  const earnedBonus = (dailyActionTotals(snapshot.entries).get(date) ?? 0) >= dailyActionGoal
+    && !snapshot.entries.some(entry => entry.id === bonusId);
   // A deleted action can invalidate the record after its bonus point was spent.
-  const bonusAlreadySpent = earnedBonus && spentEnergyIds().has(bonusId);
+  const bonusAlreadySpent = earnedBonus && spentEnergyIds(snapshot).has(bonusId);
   if (earnedBonus) {
     const actionLabel = `${date === todayKey() ? "今日" : ""}完成 ${dailyActionGoal} 项行动奖励`;
-    state.entries.push({ id: bonusId, date, kind: dailyActionBonus, actionLabel, reward: 1, collected: bonusAlreadySpent });
+    snapshot.entries.push({ id: bonusId, date, kind: dailyActionBonus, actionLabel, reward: 1, collected: bonusAlreadySpent });
   }
   return { reward, earnedBonus: earnedBonus && !bonusAlreadySpent };
 }
 
-function record(kind, date, status) {
-  const habit = state.habits.find(habit => habit.id === kind);
-  if (!habit || state.entries.some(entry => entry.date === date && entry.kind === kind)) return;
+function record(habit, date, status) {
   const previousLength = state.entries.length;
   const { reward, earnedBonus } = addActionEntry(habit, date);
   if (!saveState()) {
@@ -1475,20 +1586,22 @@ function record(kind, date, status) {
 function applyFinanceLink({ date, recorded, happy }) {
   if (date !== todayKey()) return false;
   if (recorded !== true) return true;
-  const previousLength = state.entries.length;
-  const habit = state.habits.find(item => item.name.trim() === "伊比理财");
-  const completed = habit && !state.entries.some(entry => entry.date === date && entry.kind === habit.id);
-  if (completed) addActionEntry(habit, date, "finance-link");
+  const snapshot = inExperiment ? readState() : state;
+  const previousLength = snapshot.entries.length;
+  const habit = snapshot.habits.find(item => item.name.trim() === "伊比理财" && actionAvailableOn(item, date, date));
+  const completed = habit && !snapshot.entries.some(entry => entry.date === date && entry.kind === habit.id);
+  if (completed) addActionEntry(habit, date, "finance-link", snapshot);
 
   const id = `${date}:${whaleMoodBonus}`;
-  if (happy === true && !state.entries.some(entry => entry.id === id)) {
-    state.entries.push({ id, date, kind: whaleMoodBonus, actionLabel: "鲸鱼娘开心奖励", reward: 2, collected: false });
+  if (happy === true && !snapshot.entries.some(entry => entry.id === id)) {
+    snapshot.entries.push({ id, date, kind: whaleMoodBonus, actionLabel: "鲸鱼娘开心奖励", reward: 2, collected: false });
   }
-  if (state.entries.length === previousLength) return true;
-  if (!saveState()) {
-    state.entries.length = previousLength;
+  if (snapshot.entries.length === previousLength) return true;
+  if (!saveState(snapshot, forestSave)) {
+    snapshot.entries.length = previousLength;
     return false;
   }
+  if (inExperiment) return true;
   renderOrbs();
   updateControls();
   if (el.journal.open) {
@@ -1532,15 +1645,109 @@ function collect(id) {
   focusTarget.focus({ preventScroll: true });
 }
 
+function formatPlantGrowthTime(points) {
+  const minutes = points * naturalGrowthInterval / 60_000;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  return `${hours ? `${hours}小时` : ""}${remaining ? `${remaining}分钟` : ""}` || "0";
+}
+
+function updatePlantPickerAvailability(balance = availableEnergy()) {
+  const species = plants.get(selectedPlant);
+  const owned = state.seedlings.filter(seedling => seedling.species === selectedPlant).length;
+  const locked = !isPlantUnlocked(species.unlockLevel);
+  const openPlot = isOpenPlot(selectedPlot) && !state.trees.some(tree => tree.plot === selectedPlot);
+  el["plant-picker-cost"].textContent = `${owned ? 0 : species.price} 点`;
+  el["plant-picker-stock"].textContent = `${owned} 株`;
+  el["plant-picker-confirm"].disabled = !openPlot || (!owned && (locked || balance < species.price));
+  let message = "";
+  if (!openPlot) message = "请重新选择空地。";
+  else if (!owned && locked) message = `${species.unlockLevel} 级解锁`;
+  else if (!owned && balance < species.price) message = `还差 ${species.price - balance} 点生命力`;
+  el["plant-picker-status"].textContent = message;
+}
+
+function selectPlantPickerChoice(id) {
+  selectedPlant = id;
+  const species = plants.get(id);
+  for (const [choiceId, { choice }] of plantOptions) {
+    choice.setAttribute("aria-pressed", String(choiceId === id));
+  }
+  el["plant-picker-art"].src = species.sprite;
+  el["plant-picker-name"].textContent = species.name;
+  el["plant-picker-category"].textContent = plantPickerCategories[species.category ?? "other"][0];
+  el["plant-picker-xp"].textContent = `+${species.xp}`;
+  el["plant-picker-gold"].textContent = `${species.gold} 金币`;
+
+  const stages = [...growthStages].reverse();
+  el["plant-picker-stages"].replaceChildren(...stages.map((stage, index) => {
+    const item = document.createElement("li");
+    const art = document.createElement("figure");
+    const image = document.createElement("img");
+    image.src = growthStageSprite(id, stage);
+    image.alt = "";
+    art.append(image);
+    const name = document.createElement("span");
+    name.textContent = stage.label;
+    const start = formatPlantGrowthTime(Math.ceil(stage.ratio * species.maturity));
+    const next = stages[index + 1];
+    const duration = document.createElement("small");
+    duration.textContent = next ? `${start}–${formatPlantGrowthTime(Math.ceil(next.ratio * species.maturity))}` : `${start}可收获`;
+    item.append(art, name, duration);
+    return item;
+  }));
+  updatePlantPickerAvailability();
+}
+
+function updatePlantPickerArrows() {
+  const strip = el["plant-options"];
+  el["plant-picker-prev"].disabled = strip.scrollLeft <= 1;
+  el["plant-picker-next"].disabled = strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 1;
+}
+
+function filterPlantPicker(category, preferred) {
+  for (const button of el["plant-picker-filters"].children) {
+    button.setAttribute("aria-pressed", String(button.dataset.plantCategory === category));
+  }
+  let first;
+  for (const [id, { choice }] of plantOptions) {
+    choice.hidden = category !== "all" && (plants.get(id).category ?? "other") !== category;
+    if (!choice.hidden) first ??= id;
+  }
+  el["plant-options"].scrollLeft = 0;
+  selectPlantPickerChoice(preferred ?? first);
+  if (el["plant-picker"].open) updatePlantPickerArrows();
+}
+
 function showPlantPicker(index) {
   if (!isOpenPlot(index)) return;
-  if (!state.seedlings.length && availableEnergy() < minimumPrice) {
+  const balance = availableEnergy();
+  if (!state.seedlings.length && balance < minimumPrice) {
     notify(`种植至少需要 ${minimumPrice} 点生命力`);
     return;
   }
   selectedPlot = index;
+  const initial = [...plantOptions.keys()].find(id => {
+    const { unlockLevel, price } = plants.get(id);
+    return state.seedlings.some(seedling => seedling.species === id) || (isPlantUnlocked(unlockLevel) && balance >= price);
+  });
+  filterPlantPicker("all", initial);
   el["plant-picker"].showModal();
+  plantOptions.get(selectedPlant).choice.scrollIntoView({ block: "nearest", inline: "nearest" });
+  updatePlantPickerArrows();
 }
+
+el["plant-options"].addEventListener("scroll", updatePlantPickerArrows, { passive: true });
+window.addEventListener("resize", () => {
+  if (el["plant-picker"].open) updatePlantPickerArrows();
+});
+for (const [id, direction] of [["plant-picker-prev", -1], ["plant-picker-next", 1]]) {
+  el[id].addEventListener("click", () => {
+    const strip = el["plant-options"];
+    strip.scrollBy({ left: direction * strip.clientWidth, behavior: reduceMotion.matches ? "instant" : "smooth" });
+  });
+}
+el["plant-picker-confirm"].addEventListener("click", () => plant(selectedPlot, selectedPlant));
 
 function buySeedling(id) {
   const species = plants.get(id);
@@ -1554,9 +1761,14 @@ function buySeedling(id) {
     return;
   }
   state.seedlings.push({ species: id, energyIds });
-  saveState();
+  if (!saveState()) {
+    state.seedlings.pop();
+    el["shop-status"].textContent = "存档未能保存，请重试。";
+    return;
+  }
   updateControls();
   el["shop-status"].textContent = `已购入 1 株${species.name}种苗。点空地即可种植。`;
+  if (species.abstract) playAbstractPurchaseSound(id);
 }
 
 function buyFertilizer(id) {
@@ -1601,27 +1813,30 @@ function useFertilizer(id) {
 }
 
 function plant(index, species) {
+  const status = el["plant-picker-status"];
   if (!isOpenPlot(index)) {
-    notify("这块地需要先开垦才能种植。");
+    status.textContent = "这块地需要先开垦才能种植。";
     return;
   }
   if (state.trees.some(tree => tree.plot === index)) {
-    notify("这块地已经种上植物，请选另一格");
+    status.textContent = "这块地已经种上植物，请选另一格。";
     return;
   }
   const { name, price, maturity, unlockLevel } = plants.get(species);
   const stockIndex = state.seedlings.findIndex(seedling => seedling.species === species);
+  const seedling = state.seedlings[stockIndex];
   let energyIds;
-  if (stockIndex >= 0) {
-    energyIds = state.seedlings.splice(stockIndex, 1)[0].energyIds;
+  if (seedling) {
+    energyIds = seedling.energyIds;
+    state.seedlings.splice(stockIndex, 1);
   } else {
     if (!isPlantUnlocked(unlockLevel)) {
-      notify(`${name}将在 ${unlockLevel} 级解锁。`);
+      status.textContent = `${name}将在 ${unlockLevel} 级解锁。`;
       return;
     }
     energyIds = availableEnergyIds(price);
     if (energyIds.length < price) {
-      notify(`种植${name}需要 ${price} 点生命力`);
+      status.textContent = `种植${name}需要 ${price} 点生命力。`;
       return;
     }
   }
@@ -1629,7 +1844,13 @@ function plant(index, species) {
     plot: index, species, date: todayKey(), plantedAt: Date.now(),
     growthTarget: maturity, growthInterval: naturalGrowthInterval, energyIds,
   });
-  saveState();
+  if (!saveState()) {
+    state.trees.pop();
+    if (seedling) state.seedlings.splice(stockIndex, 0, seedling);
+    status.textContent = "存档未能保存，请重试。";
+    return;
+  }
+  el["plant-picker"].close();
   renderPlots(index);
   updateControls();
   el.plots.querySelector(`[data-plot="${index}"]`).focus({ preventScroll: true });
@@ -1749,22 +1970,44 @@ function hideToolCursor() {
 
 function syncWorldScene() {
   const inRanch = location.hash === "#ranch";
+  const nextExperiment = location.hash === "#experiment";
   const ranch = el["ranch-view"];
-  if (ranch.hidden === !inRanch) return;
+  const experimentChanged = nextExperiment !== inExperiment;
+  if (!experimentChanged && ranch.hidden === !inRanch) return;
 
   const previousLink = el[inRanch ? "open-ranch" : "return-farm"];
   const moveFocus = document.activeElement === previousLink;
-  if (inRanch) {
+  if (inRanch || experimentChanged) {
     previewCrop(null);
     showOrbTooltip(null);
     hideToolCursor();
+  }
+  if (experimentChanged) {
+    for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
+    if (activeTool) selectTool(activeTool);
+    el.notice.hidden = true;
+    clearTimeout(xpGainTimer);
+    visibleXpGain = 0;
+    el["player-xp-gain"].hidden = true;
+    for (const effect of el.forest.querySelectorAll(".harvest-xp-badge, .tool-effect")) effect.remove();
+    selectedPlot = journalPlot = pendingDig = undefined;
+    inExperiment = nextExperiment;
+    el.forest.classList.toggle("is-experiment", inExperiment);
+    el["experiment-navigation"].hidden = !inExperiment;
+    el["open-ranch"].hidden = inExperiment;
+    refreshSavedForest();
   }
   el.camera.inert = inRanch;
   el["farm-tools"].hidden = inRanch;
   el["pan-hint"].hidden = inRanch;
   ranch.hidden = !inRanch;
   el["ranch-navigation"].hidden = !inRanch;
-  if (moveFocus) el[inRanch ? "return-farm" : "open-ranch"].focus({ preventScroll: true });
+  if (experimentChanged && !inRanch) {
+    cameraTo(875, false);
+    el[inExperiment ? "experiment-tools" : "open-toolbox"].focus({ preventScroll: true });
+  } else if (moveFocus) {
+    el[inRanch ? "return-farm" : "open-ranch"].focus({ preventScroll: true });
+  }
 }
 
 window.addEventListener("hashchange", syncWorldScene);
@@ -1883,6 +2126,7 @@ function flyHarvestXp(source, amount) {
     { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.22)`, opacity: 0 },
   ], { duration: 1350, fill: "both" });
   const arrive = () => {
+    if (!badge.isConnected) return;
     badge.remove();
     showHarvestXp(amount);
   };
@@ -1905,7 +2149,7 @@ function harvest(tree) {
   playToolEffect("harvest", tree);
   removePlant(tree);
   flyHarvestXp(source, species.xp);
-  playEffect(cropHarvestSound);
+  playCropHarvestSound(id);
   notify(`收获了 ${species.name}，经验 +${species.xp}。作物已存入仓库。`);
 }
 
@@ -2140,7 +2384,7 @@ el["avatar-file"].addEventListener("change", async event => {
   el["choose-avatar"].disabled = true;
   el["reset-avatar"].disabled = true;
   try {
-    const saveKey = forestSave.key();
+    const saveKey = activeForestSave().key();
     const header = new DataView(await file.slice(0, 8).arrayBuffer());
     if (header.byteLength < 8 || header.getUint32(0) !== 0x89504e47 || header.getUint32(4) !== 0x0d0a1a0a) {
       status.textContent = "请选择有效的 PNG 图片。";
@@ -2154,7 +2398,7 @@ el["avatar-file"].addEventListener("change", async event => {
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     try {
       canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      if (forestSave.key() === saveKey) setAvatar(canvas.toDataURL("image/png"));
+      if (activeForestSave().key() === saveKey) setAvatar(canvas.toDataURL("image/png"));
     } finally {
       bitmap.close();
     }
@@ -2201,14 +2445,23 @@ function updateRipeningChoices() {
   if (options.some(option => option.value === current)) select.value = current;
 }
 
-el["open-forest-controls"].addEventListener("click", () => {
+function showExperimentTools() {
+  if (!inExperiment) return;
   el["forest-energy"].value = availableEnergy();
   el["forest-energy-status"].textContent = "";
   el["forest-grow-status"].textContent = "";
   updateRipeningChoices();
   el["forest-controls"].showModal();
+}
+
+el["open-forest-controls"].addEventListener("click", () => {
+  el.toolbox.close();
+  if (inExperiment) showExperimentTools();
+  else location.hash = "experiment";
 });
+el["experiment-tools"].addEventListener("click", showExperimentTools);
 el["forest-unlock-plants"].addEventListener("click", () => {
+  if (!inExperiment) return;
   const previous = state.allPlantsUnlocked;
   state.allPlantsUnlocked = true;
   if (!saveState()) {
@@ -2220,6 +2473,7 @@ el["forest-unlock-plants"].addEventListener("click", () => {
 });
 el["forest-energy-form"].addEventListener("submit", event => {
   event.preventDefault();
+  if (!inExperiment) return;
   const target = el["forest-energy"].valueAsNumber;
   const status = el["forest-energy-status"];
   if (!Number.isSafeInteger(target) || target < 0) {
@@ -2235,6 +2489,7 @@ el["forest-energy-form"].addEventListener("submit", event => {
 });
 el["forest-grow-form"].addEventListener("submit", event => {
   event.preventDefault();
+  if (!inExperiment) return;
   const selected = el["forest-grow-plot"].value;
   const status = el["forest-grow-status"];
   const now = Date.now();
@@ -2272,11 +2527,31 @@ const shopOpenSound = new Audio("./assets/sfx/shop-open.mp3");
 const cropWaterSound = new Audio("./assets/sfx/crop-water.mp3");
 const sunCollectSound = new Audio("./assets/sfx/sun-collect.mp3");
 const cropHarvestSound = new Audio("./assets/sfx/crop-harvest.mp3");
+const abstractHarvestSounds = new Map();
 const cropSellSound = new Audio("./assets/sfx/crop-sell.mp3");
 
-function playEffect(sound) {
+function playEffect(sound, onPlaybackError = () => {}) {
   sound.currentTime = 0;
-  sound.play().catch(() => {});
+  sound.play().catch(onPlaybackError);
+}
+
+function createAbstractCropSound(id) {
+  return new Audio(`./assets/sfx/crop-harvest-${id}.mp3`);
+}
+
+function playCropHarvestSound(id) {
+  if (!plants.get(id).abstract) {
+    playEffect(cropHarvestSound);
+    return;
+  }
+  if (!abstractHarvestSounds.has(id)) {
+    abstractHarvestSounds.set(id, createAbstractCropSound(id));
+  }
+  playEffect(abstractHarvestSounds.get(id), error => {
+    if (error.name === "AbortError") return;
+    abstractHarvestSounds.set(id, cropHarvestSound);
+    playEffect(cropHarvestSound);
+  });
 }
 
 document.addEventListener("click", event => {
@@ -2292,11 +2567,49 @@ const musicFile = el["music-file"];
 const musicPlayer = el["music-player"];
 const musicStatus = el["music-status"];
 const musicToggle = el["toggle-music"];
+const toolboxMusicSwitch = el["toolbox-music-switch"];
 const backgroundTracks = [
   { src: "./assets/music/sunny-mornings.mp3", title: "Sunny Mornings · Peder B. Helland" },
   { src: "./assets/music/林中晨歌.mp3", title: "林中晨歌" },
 ];
 let requestedMusicPlayback;
+const playingPurchaseSounds = new Set();
+const purchaseMusicRatio = 0.35;
+const musicVolumeRestoreDuration = 1000;
+let originalMusicVolume;
+let musicVolumeRestoreTimer;
+
+function lowerMusicForPurchase() {
+  if (musicPlayer.paused || musicPlayer.ended || musicPlayer.error) return;
+  clearInterval(musicVolumeRestoreTimer);
+  originalMusicVolume ??= musicPlayer.volume;
+  musicPlayer.volume = originalMusicVolume * purchaseMusicRatio;
+}
+
+function playAbstractPurchaseSound(id) {
+  const sound = createAbstractCropSound(id);
+  sound.addEventListener("playing", () => {
+    playingPurchaseSounds.add(sound);
+    lowerMusicForPurchase();
+  }, { once: true });
+
+  const finish = () => {
+    if (!playingPurchaseSounds.delete(sound) || playingPurchaseSounds.size || originalMusicVolume === undefined) return;
+    const from = musicPlayer.volume;
+    const target = originalMusicVolume;
+    const start = performance.now();
+    musicVolumeRestoreTimer = setInterval(() => {
+      const progress = Math.min(1, (performance.now() - start) / musicVolumeRestoreDuration);
+      musicPlayer.volume = progress === 1 ? target : from + (target - from) * progress;
+      if (progress === 1) {
+        clearInterval(musicVolumeRestoreTimer);
+        originalMusicVolume = undefined;
+      }
+    }, 25);
+  };
+  for (const event of ["ended", "pause", "error"]) sound.addEventListener(event, finish, { once: true });
+  playEffect(sound, finish);
+}
 
 function updateMusicToggle() {
   const playing = !musicPlayer.paused && !musicPlayer.ended && !musicPlayer.error;
@@ -2304,6 +2617,7 @@ function updateMusicToggle() {
   musicToggle.classList.toggle("is-playing", playing);
   musicToggle.setAttribute("aria-label", label);
   musicToggle.title = label;
+  toolboxMusicSwitch.setAttribute("aria-checked", String(playing));
 }
 
 function reportMusicError(message) {
@@ -2343,10 +2657,12 @@ musicPlayer.addEventListener("play", () => {
   // Native audio controls have already started playback when this event fires.
   if (!requestedMusicPlayback && chooseBackgroundTrack()) playSelectedTrack();
 });
-musicToggle.addEventListener("click", () => {
+function toggleMusic() {
   if (musicPlayer.paused || musicPlayer.ended) playMusic();
   else musicPlayer.pause();
-});
+}
+musicToggle.addEventListener("click", toggleMusic);
+toolboxMusicSwitch.addEventListener("click", toggleMusic);
 for (const eventName of ["play", "pause", "ended", "emptied", "error"]) {
   musicPlayer.addEventListener(eventName, updateMusicToggle);
 }
@@ -2354,7 +2670,10 @@ el["open-background-music"].addEventListener("click", () => {
   el["background-music"].showModal();
   playMusic();
 });
-musicPlayer.addEventListener("playing", () => { musicStatus.hidden = true; });
+musicPlayer.addEventListener("playing", () => {
+  musicStatus.hidden = true;
+  if (playingPurchaseSounds.size) lowerMusicForPurchase();
+});
 el["choose-music"].addEventListener("click", () => musicFile.click());
 musicFile.addEventListener("change", () => {
   const file = musicFile.files[0];
@@ -2403,6 +2722,7 @@ el["reclaim-form"].addEventListener("submit", event => {
     ...state,
     player: { ...state.player, gold: state.player.gold - next.price },
     reclaimedPlots: [...state.reclaimedPlots, next.index],
+    pendingExpansionPlots: state.pendingExpansionPlots.filter(index => index !== next.index),
     trees: [...state.trees],
     waitingCrops: [...state.waitingCrops],
   };
@@ -2496,6 +2816,18 @@ function createShopCard(id, product, artwork) {
   return { card, buy, stock };
 }
 
+for (const [id, [label, emoji]] of Object.entries(plantPickerCategories)) {
+  const button = document.createElement("button");
+  const icon = document.createElement("span");
+  icon.textContent = emoji;
+  icon.setAttribute("aria-hidden", "true");
+  button.type = "button";
+  button.dataset.plantCategory = id;
+  button.append(icon, label);
+  button.addEventListener("click", () => filterPlantPicker(id));
+  el["plant-picker-filters"].append(button);
+}
+
 for (const [id, species] of [...plants].sort(([, a], [, b]) => a.unlockLevel - b.unlockLevel)) {
   const sprite = document.createElement("img");
   sprite.src = species.sprite;
@@ -2507,10 +2839,7 @@ for (const [id, species] of [...plants].sort(([, a], [, b]) => a.unlockLevel - b
   choice.className = "plant-option";
   const choicePrice = document.createElement("small");
   choice.append(sprite.cloneNode(), name, choicePrice);
-  choice.addEventListener("click", () => {
-    el["plant-picker"].close();
-    plant(selectedPlot, id);
-  });
+  choice.addEventListener("click", () => selectPlantPickerChoice(id));
   el["plant-options"].append(choice);
 
   const { card, buy, stock } = createShopCard(id, species, sprite);
@@ -2540,7 +2869,7 @@ for (const [id, fertilizer] of fertilizers) {
   fertilizerOptions.set(id, { buy, stock, use, useStock });
 }
 function refreshSavedForest() {
-  state = readState();
+  state = readState(activeForestSave());
   renderActionCategories();
   renderHabits();
   renderPlots();
@@ -2556,12 +2885,16 @@ function refreshSavedForest() {
     }
   }
 }
-window.addEventListener("storage", event => forestSave.storageChanged(event.key));
+window.addEventListener("storage", event => {
+  forestSave.storageChanged(event.key);
+  if (inExperiment) experimentSave.storageChanged(event.key);
+});
 window.addEventListener("focus", () => void forestSave.sync());
 window.addEventListener("online", () => void forestSave.sync());
 window.addEventListener("offline", () => void forestSave.sync());
 document.addEventListener("visibilitychange", () => {
   void forestSave.sync();
+  if (!document.hidden && todayKey() !== displayedDay) updateControls();
 });
 setInterval(() => void forestSave.sync(), 30_000);
 el["account-sync-retry"].addEventListener("click", () => void forestSave.sync());
@@ -2577,7 +2910,6 @@ setInterval(() => {
 }, 30_000);
 
 renderActionCategories();
-renderHabits();
 renderPlots();
 renderOrbs();
 updateControls();

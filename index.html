@@ -149,6 +149,13 @@
           <span>森林手记</span>
         </button>
       </div>
+      <nav class="experiment-navigation" id="experiment-navigation" aria-label="实验田导航" hidden>
+        <h2>神之一手-实验田</h2>
+        <div>
+          <a href="#farm">‹ 返回日常田</a>
+          <button id="experiment-tools" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#spark"/></svg>试验工具</button>
+        </div>
+      </nav>
     </header>
     <nav class="farm-tools" id="farm-tools" aria-label="农场工具">
       <button class="hud-shortcut" id="tool-dig" type="button" aria-pressed="false"><img src="./assets/tools/dig.webp" alt=""><span>铲地</span></button>
@@ -182,7 +189,7 @@
       <label for="name-input">用户名</label>
       <div><input id="name-input" maxlength="14" required><button class="primary" type="submit">保存</button></div>
     </form>
-    <p class="guide">收获成熟植物获得经验。1 级升 2 级需 200 经验，之后每级多需 80 点，最高 100 级。</p>
+    <p class="guide">收获成熟植物获得经验。1 级升 2 级需 200 经验。之后每级的门槛先递增 80 点，从 10 级起每跨 10 级，递增量再加 20 点。最高 100 级。</p>
     <ul class="rank-list" id="rank-list"></ul>
   </dialog>
   <dialog id="farm-inventory" aria-labelledby="inventory-title">
@@ -232,26 +239,17 @@
     </form>
   </dialog>
   <dialog id="toolbox" aria-labelledby="toolbox-title">
-    <div class="dialog-heading"><h2 id="toolbox-title">工具箱</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
-    <div class="toolbox-options">
-      <button class="habit" id="open-background-music" type="button">
-        <span class="habit-icon" aria-hidden="true">♫</span>
-        <span class="habit-copy"><strong>背景音乐</strong></span>
-      </button>
-      <button class="habit" id="open-life-transfer" type="button">
-        <span class="habit-icon" aria-hidden="true"><svg><use href="#spark"/></svg></span>
-        <span class="habit-copy"><strong>生命力传递</strong></span>
-      </button>
-      <button class="habit" id="open-account" type="button">
-        <span class="habit-icon" aria-hidden="true"><svg><use href="#lock"/></svg></span>
-        <span class="habit-copy"><strong>账号登录</strong></span>
-        <span class="account-tool-status" id="account-tool-status" hidden><span class="account-badge">已登录</span><span id="account-tool-email"></span></span>
-      </button>
-      <button class="habit" id="open-forest-controls" type="button">
-        <span class="habit-icon" aria-hidden="true">✦</span>
-        <span class="habit-copy"><strong>神之一手</strong></span>
-      </button>
-    </div>
+    <h2 class="visually-hidden" id="toolbox-title">工具箱</h2>
+    <form method="dialog"><button class="toolbox-close" type="submit" aria-label="关闭工具箱"></button></form>
+    <button class="toolbox-option" id="open-background-music" type="button" aria-label="背景音乐设置"></button>
+    <button id="toolbox-music-switch" type="button" role="switch" aria-checked="false" aria-label="背景音乐"></button>
+    <button class="toolbox-option" id="open-life-transfer" type="button" aria-label="生命力传递"></button>
+    <button class="toolbox-option" id="open-account" type="button">
+      <span class="visually-hidden">账号登录</span>
+      <span class="account-tool-status" id="account-tool-status" hidden><span class="account-badge">已登录</span><span id="account-tool-email"></span></span>
+      <span class="toolbox-login-action">去登录</span>
+    </button>
+    <button class="toolbox-option" id="open-forest-controls" type="button" aria-label="神之一手"></button>
   </dialog>
   <dialog id="forest-controls" aria-labelledby="forest-controls-title">
     <div class="dialog-heading"><h2 id="forest-controls-title">神之一手</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭神之一手"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
@@ -456,8 +454,24 @@
       <textarea id="action-description" maxlength="140" rows="2"></textarea>
       <label for="action-category">行动分类</label>
       <select id="action-category" name="category"></select>
-      <label for="action-reward">生命力奖励（点）</label>
-      <input id="action-reward" type="number" inputmode="numeric" min="1" max="9007199254740991" step="1" value="1" required>
+      <label for="action-repeat">重复频率</label>
+      <select id="action-repeat">
+        <option value="daily">每天</option>
+        <option value="once">仅今天</option>
+      </select>
+      <div class="action-reward-row">
+        <div>
+          <label for="action-reward">生命力奖励（点）</label>
+          <input id="action-reward" type="number" inputmode="numeric" min="1" max="9007199254740991" step="1" value="1" required>
+        </div>
+        <div>
+          <label for="action-praise">赞美指数（选填）</label>
+          <div class="action-praise-field">
+            <input id="action-praise" type="number" inputmode="numeric" min="80" max="100" step="1" placeholder="80–100">
+            <output id="action-praise-quality" for="action-praise"></output>
+          </div>
+        </div>
+      </div>
       <div class="action-editor-buttons">
         <button class="action-delete" id="delete-action" type="button" hidden>删除行动</button>
         <button class="primary" id="create-action" type="submit">添加</button>
@@ -501,11 +515,46 @@
     </form>
   </dialog>
   <dialog id="plant-picker" aria-labelledby="plant-picker-title">
-    <div class="dialog-heading">
-      <div><h2 id="plant-picker-title">想种什么？</h2><p class="dialog-balance">生命力余额 <strong id="plant-balance">0</strong></p></div>
-      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    <header class="plant-picker-heading">
+      <h2 class="visually-hidden" id="plant-picker-title">想种什么？</h2>
+      <svg class="plant-picker-sign" viewBox="195 10 642 177" aria-hidden="true">
+        <clipPath id="plant-picker-sign-outline">
+          <path fill="#fff" d="M205 128C208 100 238 84 281 74C274 66 268 56 267 40C269 32 311 27 339 40L349 43C349 36 354 32 358 30C352 22 365 14 378 17C384 19 385 20 386 22C395 11 410 15 414 22C418 27 415 32 409 37C416 36 422 41 422 46C513 34 642 36 701 53L710 55C718 40 748 24 769 28C779 32 774 50 768 65C788 66 813 79 827 100C829 104 821 108 814 110C819 124 823 143 818 153C809 157 783 149 773 149C759 168 734 176 709 176C645 171 588 169 535 168C460 167 402 174 348 176C317 178 293 165 287 143L285 124C264 129 232 131 210 135Q204 137 205 128Z"/>
+        </clipPath>
+        <image href="./assets/plant-picker-reference.png" width="1086" height="1448" clip-path="url(#plant-picker-sign-outline)"/>
+      </svg>
+      <form method="dialog"><button class="plant-picker-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </header>
+    <div class="plant-picker-body">
+      <div class="plant-picker-filters" id="plant-picker-filters" role="group" aria-label="作物分类"></div>
+      <div class="plant-picker-carousel">
+        <button class="plant-picker-arrow" id="plant-picker-prev" type="button" aria-label="向前查看作物">‹</button>
+        <div class="plant-options" id="plant-options" role="group" aria-label="选择作物"></div>
+        <button class="plant-picker-arrow" id="plant-picker-next" type="button" aria-label="向后查看作物">›</button>
+      </div>
+      <section class="plant-picker-details" aria-labelledby="plant-picker-name">
+        <div class="plant-picker-hero">
+          <div class="plant-picker-preview"><img id="plant-picker-art" alt=""></div>
+          <div class="plant-picker-facts">
+            <div class="plant-picker-product"><h3 id="plant-picker-name"></h3><span id="plant-picker-category"></span></div>
+            <dl class="plant-picker-stats">
+              <div><dt><svg aria-hidden="true"><use href="#spark"/></svg>生命力</dt><dd id="plant-picker-cost"></dd></div>
+              <div><dt><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></svg>经验</dt><dd id="plant-picker-xp"></dd></div>
+              <div><dt><i class="coin-mark" aria-hidden="true"></i>售价</dt><dd id="plant-picker-gold"></dd></div>
+              <div><dt><svg aria-hidden="true"><use href="#sprout"/></svg>库存</dt><dd id="plant-picker-stock"></dd></div>
+            </dl>
+          </div>
+        </div>
+        <section class="plant-picker-growth" aria-labelledby="plant-picker-growth-title">
+          <h4 id="plant-picker-growth-title"><span aria-hidden="true">🍃</span> 成长阶段</h4>
+          <ol id="plant-picker-stages"></ol>
+        </section>
+      </section>
+      <footer>
+        <button id="plant-picker-confirm" type="button" aria-describedby="plant-picker-status"><svg aria-hidden="true"><use href="#sprout"/></svg>立即种植</button>
+        <p id="plant-picker-status" role="status"></p>
+      </footer>
     </div>
-    <div class="plant-options" id="plant-options"></div>
   </dialog>
   <dialog id="journal" aria-labelledby="journal-title">
     <div class="journal-book">
