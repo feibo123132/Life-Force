@@ -94,39 +94,44 @@ for (let level = 2; level <= maxPlayerLevel; level++) {
   levelXpCosts.push(levelXpCosts[level - 1] + 80 + 20 * Math.floor(level / 10));
 }
 
-const plantTiers = new Map([1, 10, 20, 30, 40, 50, 55, 60, 65, 70, 75, 80, 85, 90].map((unlockLevel, index) => {
+const naturalGrowthInterval = 600_000;
+const plantTiers = new Map([
+  [1, 10], [10, 12], [20, 14], [30, 16], [40, 18], [50, 20], [55, 22],
+  [60, 24], [65, 28], [70, 32], [75, 36], [80, 40], [85, 44], [90, 48],
+].map(([unlockLevel, maturityHours], index) => {
   const price = 2 * (index + 1);
   const xp = price * (20 + index);
-  return [unlockLevel, { unlockLevel, price, xp, gold: xp }];
+  const maturity = maturityHours * 3_600_000 / naturalGrowthInterval;
+  return [unlockLevel, { unlockLevel, price, xp, gold: xp, maturity }];
 }));
 const abstractPlantTier = { abstract: true, unlockLevel: maxPlayerLevel, price: 14, maturity: 195, xp: 378, gold: 45 };
 const plantPlaceholder = { sprite: "./assets/warehouse/sprout-tag.webp", height: 105 };
 const plants = new Map([
-  ["reeds", { ...plantTiers.get(1), name: "芦苇", sprite: "./assets/reeds.webp", maturity: 75, height: 111, matureScale: 1.25 }],
-  ["rice", { ...plantTiers.get(1), name: "水稻", category: "grain", sprite: "./assets/rice.webp", maturity: 60, height: 86, matureScale: 1.4 }],
-  ["carrot", { ...plantTiers.get(1), name: "胡萝卜", category: "vegetable", sprite: "./assets/carrot.webp", maturity: 60, height: 116, previousMaturity: 180 }],
-  ["broccoli", { ...plantTiers.get(10), name: "西兰花", category: "vegetable", sprite: "./assets/broccoli.webp", maturity: 75, height: 102, previousMaturity: 195 }],
-  ["cabbage", { ...plantTiers.get(10), name: "包菜", category: "vegetable", sprite: "./assets/cabbage.webp", maturity: 60, height: 90, previousMaturity: 210 }],
-  ["lucky-clover", { ...plantTiers.get(10), ...plantPlaceholder, name: "幸运草", maturity: 75 }],
-  ["watermelon", { ...plantTiers.get(20), name: "西瓜", category: "fruit", sprite: "./assets/watermelon.webp", maturity: 90, height: 95, previousMaturity: 240 }],
-  ["cantaloupe", { ...plantTiers.get(20), ...plantPlaceholder, name: "哈密瓜", category: "fruit", maturity: 90 }],
-  ["sunflower", { ...plantTiers.get(30), name: "向日葵", category: "flower", sprite: "./assets/sunflower.webp", maturity: 105, height: 122 }],
-  ["fir", { ...plantTiers.get(30), name: "杉树", sprite: "./assets/island-fir.webp", maturity: 90, height: 170 }],
-  ["corn", { ...plantTiers.get(40), name: "玉米", category: "grain", sprite: "./assets/corn.webp", maturity: 105, height: 164, previousMaturity: 225 }],
-  ["pink-rose", { ...plantTiers.get(40), ...plantPlaceholder, name: "粉玫瑰", category: "flower", maturity: 135 }],
-  ["banana", { ...plantTiers.get(50), name: "香蕉树", category: "fruit", sprite: "./assets/banana-original-two-bunches.webp", maturity: 135, height: 170 }],
-  ["mock-orange", { ...plantTiers.get(50), ...plantPlaceholder, name: "山梅花", category: "flower", maturity: 165 }],
-  ["orange", { ...plantTiers.get(55), name: "橘子树", category: "fruit", sprite: "./assets/orange.webp", maturity: 135, height: 155, previousMaturity: 255 }],
-  ["sundae-tree", { ...plantTiers.get(55), ...plantPlaceholder, name: "圣代树", maturity: 180 }],
-  ["white-birch", { ...plantTiers.get(60), ...plantPlaceholder, name: "白桦", maturity: 195 }],
-  ["osmanthus", { ...plantTiers.get(65), ...plantPlaceholder, name: "桂花", category: "flower", maturity: 210 }],
-  ["willow", { ...plantTiers.get(65), ...plantPlaceholder, name: "柳树", maturity: 210 }],
-  ["ginkgo", { ...plantTiers.get(70), ...plantPlaceholder, name: "银杏", maturity: 225 }],
-  ["cherry", { ...plantTiers.get(75), name: "樱花树", category: "flower", sprite: "./assets/cherry.webp", maturity: 165, height: 155 }],
-  ["plum-blossom", { ...plantTiers.get(80), ...plantPlaceholder, name: "梅花", category: "flower", maturity: 255 }],
-  ["pear-treehouse", { ...plantTiers.get(85), ...plantPlaceholder, name: "梨子树屋", category: "fruit", maturity: 270 }],
-  ["rainbow-eucalyptus", { ...plantTiers.get(85), ...plantPlaceholder, name: "彩虹桉", maturity: 270 }],
-  ["golden-trumpet-tree", { ...plantTiers.get(90), ...plantPlaceholder, name: "黄花风铃木", category: "flower", maturity: 285 }],
+  ["reeds", { ...plantTiers.get(1), name: "芦苇", sprite: "./assets/reeds.webp", height: 111, matureScale: 1.25 }],
+  ["rice", { ...plantTiers.get(1), name: "水稻", category: "grain", sprite: "./assets/rice.webp", height: 86, matureScale: 1.4 }],
+  ["carrot", { ...plantTiers.get(1), name: "胡萝卜", category: "vegetable", sprite: "./assets/carrot.webp", height: 116 }],
+  ["broccoli", { ...plantTiers.get(10), name: "西兰花", category: "vegetable", sprite: "./assets/broccoli.webp", height: 102 }],
+  ["cabbage", { ...plantTiers.get(10), name: "包菜", category: "vegetable", sprite: "./assets/cabbage.webp", height: 90 }],
+  ["lucky-clover", { ...plantTiers.get(10), ...plantPlaceholder, name: "幸运草" }],
+  ["watermelon", { ...plantTiers.get(20), name: "西瓜", category: "fruit", sprite: "./assets/watermelon.webp", height: 95 }],
+  ["cantaloupe", { ...plantTiers.get(20), ...plantPlaceholder, name: "哈密瓜", category: "fruit" }],
+  ["sunflower", { ...plantTiers.get(30), name: "向日葵", category: "flower", sprite: "./assets/sunflower.webp", height: 122 }],
+  ["fir", { ...plantTiers.get(30), name: "杉树", sprite: "./assets/island-fir.webp", height: 170 }],
+  ["corn", { ...plantTiers.get(40), name: "玉米", category: "grain", sprite: "./assets/corn.webp", height: 164 }],
+  ["pink-rose", { ...plantTiers.get(40), ...plantPlaceholder, name: "粉玫瑰", category: "flower" }],
+  ["banana", { ...plantTiers.get(50), name: "香蕉树", category: "fruit", sprite: "./assets/banana-original-two-bunches.webp", height: 170 }],
+  ["mock-orange", { ...plantTiers.get(50), ...plantPlaceholder, name: "山梅花", category: "flower" }],
+  ["orange", { ...plantTiers.get(55), name: "橘子树", category: "fruit", sprite: "./assets/orange.webp", height: 155 }],
+  ["sundae-tree", { ...plantTiers.get(55), ...plantPlaceholder, name: "圣代树" }],
+  ["white-birch", { ...plantTiers.get(60), ...plantPlaceholder, name: "白桦" }],
+  ["osmanthus", { ...plantTiers.get(65), ...plantPlaceholder, name: "桂花", category: "flower" }],
+  ["willow", { ...plantTiers.get(65), ...plantPlaceholder, name: "柳树" }],
+  ["ginkgo", { ...plantTiers.get(70), ...plantPlaceholder, name: "银杏" }],
+  ["cherry", { ...plantTiers.get(75), name: "樱花树", category: "flower", sprite: "./assets/cherry.webp", height: 155 }],
+  ["plum-blossom", { ...plantTiers.get(80), ...plantPlaceholder, name: "梅花", category: "flower" }],
+  ["pear-treehouse", { ...plantTiers.get(85), ...plantPlaceholder, name: "梨子树屋", category: "fruit" }],
+  ["rainbow-eucalyptus", { ...plantTiers.get(85), ...plantPlaceholder, name: "彩虹桉" }],
+  ["golden-trumpet-tree", { ...plantTiers.get(90), ...plantPlaceholder, name: "黄花风铃木", category: "flower" }],
   ["moon-gourd", {
     ...abstractPlantTier,
     name: "奶娃金葫芦",
@@ -140,12 +145,12 @@ const plants = new Map([
     height: 170,
   }],
 ]);
+const halfMaturityRatio = 1 / 3;
 const growthStages = [
   { label: "成熟期", ratio: 1, scale: 1 },
-  { label: "半成熟期", ratio: 1 / 3, scale: 0.73, asset: "young" },
+  { label: "半成熟期", ratio: halfMaturityRatio, scale: 0.73, asset: "young" },
   { label: "幼苗期", ratio: 0, scale: 0.43, asset: "seedling" },
 ];
-const naturalGrowthInterval = 600_000;
 const plantPickerCategories = {
   all: ["全部", "🍃"], grain: ["粮食", "🌾"], vegetable: ["蔬菜", "🥕"],
   flower: ["花卉", "🌸"], fruit: ["水果", "🌳"], other: ["其它", "🌿"],
@@ -185,13 +190,28 @@ let calendarMonth;
 let inExperiment = false;
 
 function restoreWaitingCrops(save) {
+  if (!save.waitingCrops.length) return;
   const occupied = new Set(save.trees.map(tree => tree.plot));
-  for (const index of plots.keys()) {
-    if (!save.waitingCrops.length) break;
-    if (!occupied.has(index) && isOpenPlot(index, save)) {
-      save.trees.push({ ...save.waitingCrops.shift(), plot: index });
+  const held = [];
+  const waiting = [];
+  for (const tree of save.waitingCrops) {
+    if (!tree.waitForExpansion) {
+      waiting.push(tree);
+    } else if (!occupied.has(tree.plot) && isOpenPlot(tree.plot, save)) {
+      const { waitForExpansion, ...restored } = tree;
+      save.trees.push(restored);
+      occupied.add(tree.plot);
+    } else {
+      held.push(tree);
     }
   }
+  for (const index of plots.keys()) {
+    if (!waiting.length) break;
+    if (!occupied.has(index) && isOpenPlot(index, save)) {
+      save.trees.push({ ...waiting.shift(), plot: index });
+    }
+  }
+  save.waitingCrops = [...waiting, ...held];
 }
 
 function migrateField(save) {
@@ -230,11 +250,15 @@ function migrateField(save) {
   return fieldSave;
 }
 
+// Preserve the earlier timing correction for crops planted before tiers were introduced.
+const legacyCropGrowthTargets = new Map([
+  ["carrot", [180, 60]], ["broccoli", [195, 75]], ["cabbage", [210, 60]],
+  ["corn", [225, 105]], ["watermelon", [240, 90]], ["orange", [255, 135]],
+]);
+
 function migrateCropMaturity(tree) {
-  const species = plants.get(tree.species);
-  if (species?.previousMaturity && tree.growthTarget === species.previousMaturity) {
-    return { ...tree, growthTarget: species.maturity };
-  }
+  const targets = legacyCropGrowthTargets.get(tree.species);
+  if (targets && tree.growthTarget === targets[0]) return { ...tree, growthTarget: targets[1] };
   return tree;
 }
 
@@ -261,7 +285,7 @@ function growthProgress(tree, now) {
   // Older saves already displayed these plants at full size.
   if (tree.forcedMature || !Number.isFinite(tree.plantedAt)) return { target, progress: target, remaining: 0 };
   const interval = tree.growthInterval ?? 1000;
-  const boost = (tree.fertilizerBoost ?? 0) + (tree.waterBoost ?? 0);
+  const boost = (tree.fertilizerBoost ?? 0) + (tree.waterBoost ?? 0) + (tree.ripeningBoost ?? 0);
   const elapsed = Math.max(0, now - tree.plantedAt);
   const progress = Math.min(target, elapsed / interval + boost);
   const remaining = progress >= target ? 0 : Math.max(0, tree.plantedAt + (target - boost) * interval - now);
@@ -414,6 +438,8 @@ function updateJournalGrowth(tree, now) {
   }
   el["fertilizer-options"].hidden = isMature;
   el["journal-harvest"].hidden = !isMature;
+  el["journal-ripening"].hidden = !inExperiment || isMature;
+  el["journal-grow-half"].disabled = points >= Math.ceil(maturity * halfMaturityRatio);
 }
 
 function refreshGrowth() {
@@ -436,6 +462,7 @@ function startingState() {
     fieldVersion,
     reclaimedPlots: [],
     pendingExpansionPlots: [],
+    experimentExpansions: [],
     waitingCrops: [],
     seedlings: [],
     fertilizerPurchases: [],
@@ -510,6 +537,7 @@ function readState(save = forestSave) {
         ...saved,
         ...field,
         pendingExpansionPlots,
+        experimentExpansions: save === experimentSave && Array.isArray(saved.experimentExpansions) ? saved.experimentExpansions : [],
         trees: field.trees.map(migrateCropMaturity),
         waitingCrops: Array.isArray(field.waitingCrops) ? field.waitingCrops.map(migrateCropMaturity) : [],
         habits,
@@ -1209,7 +1237,7 @@ function migratePlayerXp(xp) {
 }
 
 function isPlantUnlocked(unlockLevel, level = playerLevel().level) {
-  return state.allPlantsUnlocked === true || level >= unlockLevel;
+  return level >= unlockLevel || (inExperiment && state.allPlantsUnlocked === true);
 }
 
 function updatePlayer() {
@@ -1242,12 +1270,13 @@ function expansionPrice(step) {
 
 function isOpenPlot(index, save = state) {
   return Number.isInteger(index) && index >= 0 && index < plots.length
-    && (index < starterPlots || save.reclaimedPlots.includes(index));
+    && (index < starterPlots || save.reclaimedPlots.includes(index)
+      || save.experimentExpansions?.some(batch => batch.includes(index)) === true);
 }
 
 function nextExpansion() {
   const canReclaim = index => !isOpenPlot(index) && !state.trees.some(tree => tree.plot === index);
-  const index = state.pendingExpansionPlots[0]
+  const index = state.pendingExpansionPlots.find(index => !isOpenPlot(index))
     ?? (canReclaim(firstExpansionPlot) ? firstExpansionPlot : plots.findIndex((_, index) => canReclaim(index)));
   if (index < 0) return null;
   const step = state.reclaimedPlots.length;
@@ -1993,6 +2022,9 @@ function syncWorldScene() {
     selectedPlot = journalPlot = pendingDig = undefined;
     inExperiment = nextExperiment;
     el.forest.classList.toggle("is-experiment", inExperiment);
+    el["scene-image"].src = inExperiment
+      ? "./assets/peach-valley-experiment.webp"
+      : "./assets/peach-valley-farm.webp";
     el["experiment-navigation"].hidden = !inExperiment;
     el["open-ranch"].hidden = inExperiment;
     refreshSavedForest();
@@ -2440,7 +2472,7 @@ function updateRipeningChoices() {
     .sort((left, right) => left.plot - right.plot)
     .map(tree => new Option(`第 ${tree.plot + 1} 块地 · ${plants.get(speciesId(tree)).name}`, String(tree.plot)));
   if (options.length > 1) options.push(new Option("全部未成熟作物", "all"));
-  select.disabled = el["forest-grow-confirm"].disabled = options.length === 0;
+  select.disabled = el["forest-grow-confirm"].disabled = el["forest-grow-half"].disabled = options.length === 0;
   select.replaceChildren(...(options.length ? options : [new Option("暂无未成熟作物", "")]));
   if (options.some(option => option.value === current)) select.value = current;
 }
@@ -2450,7 +2482,9 @@ function showExperimentTools() {
   el["forest-energy"].value = availableEnergy();
   el["forest-energy-status"].textContent = "";
   el["forest-grow-status"].textContent = "";
+  el["experiment-land-status"].textContent = "";
   updateRipeningChoices();
+  updateExperimentLandControls();
   el["forest-controls"].showModal();
 }
 
@@ -2460,6 +2494,56 @@ el["open-forest-controls"].addEventListener("click", () => {
   else location.hash = "experiment";
 });
 el["experiment-tools"].addEventListener("click", showExperimentTools);
+
+function updateExperimentLandControls() {
+  const openCount = [...plots.keys()].filter(index => isOpenPlot(index)).length;
+  el["experiment-land-count"].textContent = `已开放 ${openCount} / ${plots.length} 块土地`;
+  el["experiment-land-next"].disabled = !nextExpansion();
+  el["experiment-land-all"].disabled = openCount === plots.length;
+  el["experiment-land-undo"].disabled = state.experimentExpansions.length === 0;
+}
+
+el["experiment-land-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  if (!inExperiment || !event.submitter) return;
+
+  const mode = event.submitter.value;
+  const previous = state;
+  const history = previous.experimentExpansions;
+  const undo = mode === "undo";
+  const next = mode === "next" ? nextExpansion() : null;
+  const batch = undo ? history.at(-1)
+    : mode === "all" ? [...plots.keys()].filter(index => !isOpenPlot(index))
+    : next ? [next.index] : [];
+  if (!batch?.length) return;
+
+  state = {
+    ...previous,
+    experimentExpansions: undo ? history.slice(0, -1) : [...history, batch],
+    trees: [...previous.trees],
+    waitingCrops: [...previous.waitingCrops],
+  };
+  const heldCrops = undo ? previous.trees.filter(tree => batch.includes(tree.plot) && !isOpenPlot(tree.plot)) : [];
+  if (heldCrops.length) {
+    state.trees = previous.trees.filter(tree => !heldCrops.includes(tree));
+    state.waitingCrops.push(...heldCrops.map(tree => ({ ...tree, waitForExpansion: true })));
+  }
+  restoreWaitingCrops(state);
+  const status = el["experiment-land-status"];
+  if (!saveState()) {
+    state = previous;
+    status.textContent = "存档未能保存，请重试。";
+    return;
+  }
+  renderPlots();
+  updateControls();
+  updateRipeningChoices();
+  updateExperimentLandControls();
+  status.textContent = undo
+    ? `已撤销 ${batch.length} 块土地的扩建。${heldCrops.length ? ` ${heldCrops.length} 株作物已暂存。` : ""}`
+    : `已开放 ${batch.length} 块土地。`;
+});
+
 el["forest-unlock-plants"].addEventListener("click", () => {
   if (!inExperiment) return;
   const previous = state.allPlantsUnlocked;
@@ -2487,29 +2571,41 @@ el["forest-energy-form"].addEventListener("submit", event => {
   updateControls();
   status.textContent = `可用生命力已设为 ${target} 点。`;
 });
-el["forest-grow-form"].addEventListener("submit", event => {
-  event.preventDefault();
-  if (!inExperiment) return;
-  const selected = el["forest-grow-plot"].value;
-  const status = el["forest-grow-status"];
+function ripenExperimentCrops(selected, half, status) {
+  if (!inExperiment) return false;
   const now = Date.now();
-  const crops = state.trees.filter(tree =>
-    isOpenPlot(tree.plot) && (selected === "all" || String(tree.plot) === selected) && growthProgress(tree, now).remaining > 0);
-  if (!crops.length) {
+  const advances = new Map();
+  for (const tree of state.trees) {
+    if (!isOpenPlot(tree.plot) || (selected !== "all" && String(tree.plot) !== selected)) continue;
+    const target = Math.ceil(maturityTarget(tree) * (half ? halfMaturityRatio : 1));
+    const advance = target - growthPoints(tree, now);
+    if (advance > 0) advances.set(tree, advance);
+  }
+  if (!advances.size) {
     updateRipeningChoices();
-    status.textContent = "所选地块没有等待催熟的作物。";
-    return;
+    status.textContent = half ? "所选地块没有幼苗期作物。" : "所选地块没有等待催熟的作物。";
+    return false;
   }
   const previousTrees = state.trees;
-  state.trees = previousTrees.map(tree => crops.includes(tree) ? { ...tree, forcedMature: true } : tree);
+  state.trees = previousTrees.map(tree => {
+    const advance = advances.get(tree);
+    if (!advance) return tree;
+    return half ? { ...tree, ripeningBoost: (tree.ripeningBoost ?? 0) + advance } : { ...tree, forcedMature: true };
+  });
   if (!saveState()) {
     state.trees = previousTrees;
     status.textContent = "浏览器无法保存此次修改。";
-    return;
+    return false;
   }
   refreshGrowth();
   updateRipeningChoices();
-  status.textContent = `已催熟 ${crops.length} 株作物，可以收获了。`;
+  status.textContent = half ? `已将 ${advances.size} 株作物催到半熟。` : `已催熟 ${advances.size} 株作物，可以收获了。`;
+  return true;
+}
+
+el["forest-grow-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  ripenExperimentCrops(el["forest-grow-plot"].value, event.submitter === el["forest-grow-half"], el["forest-grow-status"]);
 });
 
 el["open-life-transfer"].addEventListener("click", () => el["life-transfer"].showModal());
@@ -2696,6 +2792,14 @@ musicPlayer.addEventListener("error", () => {
 });
 
 el["collect-life"].addEventListener("click", () => collect());
+for (const [id, half] of [["journal-grow-full", false], ["journal-grow-half", true]]) {
+  el[id].addEventListener("click", () => {
+    if (!el.journal.open) return;
+    if (ripenExperimentCrops(String(journalPlot), half, el["fertilizer-status"])) {
+      el[half ? "journal-grow-full" : "journal-harvest"].focus({ preventScroll: true });
+    }
+  });
+}
 el["journal-harvest"].addEventListener("click", () => {
   const tree = state.trees.find(plant => plant.plot === journalPlot);
   if (tree) harvest(tree);
@@ -2875,7 +2979,10 @@ function refreshSavedForest() {
   renderPlots();
   renderOrbs();
   updateControls();
-  if (el["forest-controls"].open) updateRipeningChoices();
+  if (el["forest-controls"].open) {
+    updateRipeningChoices();
+    updateExperimentLandControls();
+  }
   if (el.journal.open) {
     if (journalPlot !== undefined && !isOpenPlot(journalPlot)) {
       el.journal.close();

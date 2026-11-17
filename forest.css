@@ -688,7 +688,7 @@ dialog button:focus-visible { outline-color: #55713b; }
 .shop-heading .dialog-balance {
   position: absolute;
   z-index: 2;
-  top: 17%;
+  top: 15%;
   left: 50%;
   display: flex;
   align-items: center;
@@ -840,7 +840,7 @@ dialog button:focus-visible { outline-color: #55713b; }
 }
 .shop-product button:not(:disabled):hover { background: linear-gradient(#bedc4b, #83ae20); }
 .shop-product button:disabled { color: #525c2c; border-color: #9da265; background: linear-gradient(#d9dca0, #bfc681); box-shadow: inset 0 1px #ede8b8; text-shadow: none; }
-.shop-card.is-locked { filter: brightness(.88) saturate(.76); }
+.shop-seedlings .shop-card:has(.shop-product button:disabled) { filter: brightness(.88) saturate(.76); }
 .shop-lock {
   position: absolute;
   top: .48em;
@@ -1350,6 +1350,9 @@ dialog button:focus-visible { outline-color: #55713b; }
 .fertilizer-panel progress::-webkit-progress-bar { background: #ebd19b; }
 .fertilizer-panel progress::-webkit-progress-value { border-radius: 5px; background: linear-gradient(#a6bf55, #65812f); }
 .fertilizer-panel progress::-moz-progress-bar { border-radius: 5px; background: linear-gradient(#a6bf55, #65812f); }
+#journal-ripening { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+#journal-ripening button { min-height: 36px; padding: 0 4px; }
+#journal-ripening button:disabled { opacity: .6; }
 .fertilizer-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .fertilizer-options button { display: grid; justify-items: center; gap: 3px; padding: 6px 2px; border: 1px solid #a6b46c; border-radius: 6px; background: #e5edbb; font-size: 11px; }
 .fertilizer-options button:disabled { border-color: #dfc69d; background: #f0e7d1; color: #796448; }
@@ -1668,7 +1671,14 @@ dialog button:focus-visible { outline-color: #55713b; }
 .account-tool-status:not([hidden]) + .toolbox-login-action { display: none; }
 .forest-control-form + .forest-control-form { margin-top: 15px; padding-top: 13px; border-top: 1px solid #ead6ad; }
 .forest-control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+#forest-grow-form .forest-control-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+@media (max-width: 420px) {
+  #forest-grow-form .forest-control-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #forest-grow-plot { grid-column: 1 / -1; }
+}
 .forest-control-row .primary { white-space: nowrap; }
+.experiment-land-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.experiment-land-actions button:disabled { opacity: .6; }
 .forest-control-form .forest-control-row input[type="number"] { width: 100%; }
 .forest-control-form .guide:empty { display: none; }
 #account {

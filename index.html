@@ -78,7 +78,7 @@
     <div class="camera" id="camera">
       <div class="camera-stage">
         <div class="scene" id="scene">
-          <img class="scene-image" src="./assets/peach-valley-farm.webp" width="1672" height="941" alt="山谷里，溪流穿过木桥，农田坐落在泉水和木屋之间。">
+          <img class="scene-image" id="scene-image" src="./assets/peach-valley-farm.webp" width="1672" height="941" alt="山谷里，溪流穿过木桥，农田坐落在泉水和木屋之间。">
           <div class="plots" id="plots" role="group" aria-label="农田"></div>
           <div class="orbs" id="orbs" role="group" aria-label="家门口的待收生命力"></div>
           <button class="cabin" id="cabin" type="button" aria-label="打开木屋里的今日行动"></button>
@@ -266,6 +266,7 @@
       <div class="forest-control-row">
         <select id="forest-grow-plot"></select>
         <button class="primary" id="forest-grow-confirm" type="submit">立即催熟</button>
+        <button class="primary" id="forest-grow-half" type="submit">催到半熟</button>
       </div>
       <p class="guide" id="forest-grow-status" role="status"></p>
     </form>
@@ -273,6 +274,16 @@
       <button class="primary" id="forest-unlock-plants" type="button">解锁全部可种植物</button>
       <p class="guide" id="forest-unlock-status" role="status"></p>
     </div>
+    <form class="action-editor-form forest-control-form" id="experiment-land-form" aria-labelledby="experiment-land-title">
+      <strong id="experiment-land-title">解锁土地</strong>
+      <div class="experiment-land-actions">
+        <button class="primary" id="experiment-land-next" type="submit" value="next">扩建一块</button>
+        <button class="primary" id="experiment-land-all" type="submit" value="all">全部扩建</button>
+        <button class="purchase-cancel" id="experiment-land-undo" type="submit" value="undo">撤销扩建</button>
+      </div>
+      <p class="guide" id="experiment-land-count"></p>
+      <p class="guide" id="experiment-land-status" role="status"></p>
+    </form>
   </dialog>
   <dialog id="account" aria-labelledby="account-title">
     <div class="dialog-heading account-heading">
@@ -565,6 +576,10 @@
         <section class="fertilizer-panel" id="fertilizer-panel" aria-label="植物生长" hidden>
           <p id="growth-progress-label"></p>
           <progress id="growth-progress" aria-label="生长值" tabindex="-1"></progress>
+          <div id="journal-ripening" role="group" aria-label="实验田催熟" hidden>
+            <button class="primary" id="journal-grow-full" type="button">立即催熟</button>
+            <button class="primary" id="journal-grow-half" type="button">催到半熟</button>
+          </div>
           <div class="fertilizer-options" id="fertilizer-options" role="group" aria-label="选择化肥施用"></div>
           <button class="primary" id="journal-harvest" type="button" hidden>收获</button>
           <p class="guide" id="fertilizer-status" role="status"></p>

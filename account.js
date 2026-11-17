@@ -111,7 +111,10 @@
     form.hidden = active;
     session.hidden = !active;
     byId("account-identity").textContent = active ? address : "";
-    byId("account-tool-email").textContent = active ? address : "";
+    const separator = address.lastIndexOf("@");
+    const name = separator < 0 ? address : address.slice(0, separator);
+    const domain = separator < 0 ? "" : address.slice(separator + 1);
+    byId("account-tool-email").textContent = active ? `${name.slice(0, Math.min(6, name.length - 1))}…${domain}` : "";
     byId("account-tool-status").hidden = !active;
     byId("player-login-status").hidden = !active;
     title.textContent = active ? "我的账号" : loginTitle;
