@@ -2025,9 +2025,11 @@ function syncWorldScene() {
     el["scene-image"].src = inExperiment
       ? "./assets/peach-valley-experiment.webp"
       : "./assets/peach-valley-farm.webp";
+    el["experiment-dog"].hidden = !inExperiment;
     el["experiment-navigation"].hidden = !inExperiment;
     el["open-ranch"].hidden = inExperiment;
     refreshSavedForest();
+    syncExperimentMusic();
   }
   el.camera.inert = inRanch;
   el["farm-tools"].hidden = inRanch;
@@ -2668,7 +2670,11 @@ const backgroundTracks = [
   { src: "./assets/music/sunny-mornings.mp3", title: "Sunny Mornings · Peder B. Helland" },
   { src: "./assets/music/林中晨歌.mp3", title: "林中晨歌" },
 ];
-let requestedMusicPlayback;
+const experimentTrack = { src: "./assets/music/experiment-field.mp3", title: "实验田专属曲" };
+let currentTrack = backgroundTracks[0];
+let experimentVisit;
+let experimentTrackAvailable = false;
+let experimentProbe;
 const playingPurchaseSounds = new Set();
 const purchaseMusicRatio = 0.35;
 const musicVolumeRestoreDuration = 1000;
@@ -2707,8 +2713,12 @@ function playAbstractPurchaseSound(id) {
   playEffect(sound, finish);
 }
 
+function isMusicPlaying() {
+  return !musicPlayer.paused && !musicPlayer.ended && !musicPlayer.error;
+}
+
 function updateMusicToggle() {
-  const playing = !musicPlayer.paused && !musicPlayer.ended && !musicPlayer.error;
+  const playing = isMusicPlaying();
   const label = playing ? "暂停背景音乐" : "播放背景音乐";
   musicToggle.classList.toggle("is-playing", playing);
   musicToggle.setAttribute("aria-label", label);
@@ -2722,49 +2732,114 @@ function reportMusicError(message) {
   if (!el["background-music"].open) notify(message);
 }
 
-function chooseBackgroundTrack() {
-  if (musicPlayer.src.startsWith("blob:")) return false;
-  const track = backgroundTracks[Math.floor(Math.random() * backgroundTracks.length)];
-  if (musicPlayer.getAttribute("src") === track.src && !musicPlayer.error) return false;
-  musicPlayer.src = track.src;
+function setMusicTrack(track, position = 0) {
+  const previous = currentTrack;
+  currentTrack = track;
+  if (previous !== track || musicPlayer.error) {
+    musicPlayer.src = track.src;
+    if (position) musicPlayer.currentTime = position;
+  }
+  if (previous !== track && previous !== experimentVisit?.track && previous.src.startsWith("blob:")) {
+    URL.revokeObjectURL(previous.src);
+  }
   musicPlayer.hidden = false;
   el["music-track"].textContent = track.title;
-  return true;
+  updateMusicTrackChoices();
 }
 
 function playSelectedTrack() {
-  const playback = musicPlayer.play();
-  requestedMusicPlayback = playback;
-  playback.catch(error => {
+  musicPlayer.play().catch(error => {
     if (error.name === "AbortError" || musicPlayer.error) return;
     reportMusicError("未能开始播放，请再点一次播放按钮。");
-  }).finally(() => {
-    if (requestedMusicPlayback === playback) requestedMusicPlayback = undefined;
   });
 }
 
-function playMusic() {
-  if (!musicPlayer.paused && !musicPlayer.ended) return;
-  chooseBackgroundTrack();
-  playSelectedTrack();
+const musicTrackChoices = new Map();
+for (const track of [...backgroundTracks, experimentTrack]) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "music-track-choice";
+  button.textContent = track.title;
+  button.addEventListener("click", () => {
+    if (experimentVisit) experimentVisit.useSceneTrack = track === experimentTrack;
+    setMusicTrack(track);
+    playSelectedTrack();
+  });
+  musicTrackChoices.set(track, button);
+  el["music-track-list"].append(button);
 }
 
-musicPlayer.addEventListener("play", () => {
-  // Native audio controls have already started playback when this event fires.
-  if (!requestedMusicPlayback && chooseBackgroundTrack()) playSelectedTrack();
-});
-function toggleMusic() {
-  if (musicPlayer.paused || musicPlayer.ended) playMusic();
-  else musicPlayer.pause();
+function updateMusicTrackChoices() {
+  for (const [track, button] of musicTrackChoices) {
+    button.hidden = track === experimentTrack && (!inExperiment || !experimentTrackAvailable);
+    button.setAttribute("aria-pressed", String(track === currentTrack));
+  }
 }
-musicToggle.addEventListener("click", toggleMusic);
-toolboxMusicSwitch.addEventListener("click", toggleMusic);
+updateMusicTrackChoices();
+
+function selectExperimentTrack() {
+  if (!experimentVisit?.useSceneTrack || currentTrack === experimentTrack) return;
+  const playing = isMusicPlaying();
+  setMusicTrack(experimentTrack);
+  if (playing) playSelectedTrack();
+}
+
+function checkExperimentTrack() {
+  if (!inExperiment || experimentTrackAvailable || experimentProbe) return;
+  const probe = new Audio();
+  experimentProbe = probe;
+  probe.preload = "metadata";
+  probe.addEventListener("error", () => { experimentProbe = undefined; }, { once: true });
+  probe.addEventListener("loadedmetadata", () => {
+    experimentTrackAvailable = true;
+    experimentProbe = undefined;
+    updateMusicTrackChoices();
+    selectExperimentTrack();
+  }, { once: true });
+  probe.src = experimentTrack.src;
+}
+
+function syncExperimentMusic() {
+  if (inExperiment) {
+    experimentVisit = { track: currentTrack, position: musicPlayer.currentTime, useSceneTrack: true };
+    if (experimentTrackAvailable) selectExperimentTrack();
+    else checkExperimentTrack();
+  } else if (experimentVisit) {
+    const { track, position } = experimentVisit;
+    experimentVisit = undefined;
+    if (currentTrack === experimentTrack) {
+      const playing = isMusicPlaying();
+      setMusicTrack(track, position);
+      if (playing) playSelectedTrack();
+    } else if (track !== currentTrack && track.src.startsWith("blob:")) {
+      URL.revokeObjectURL(track.src);
+    }
+  }
+  updateMusicTrackChoices();
+}
+
+function toggleMusic(randomize) {
+  if (isMusicPlaying()) {
+    musicPlayer.pause();
+    return;
+  }
+  if (randomize) {
+    if (experimentVisit) experimentVisit.useSceneTrack = true;
+    const track = inExperiment && experimentTrackAvailable
+      ? experimentTrack
+      : backgroundTracks[Math.floor(Math.random() * backgroundTracks.length)];
+    setMusicTrack(track);
+    checkExperimentTrack();
+  }
+  playSelectedTrack();
+}
+musicToggle.addEventListener("click", () => toggleMusic(false));
+toolboxMusicSwitch.addEventListener("click", () => toggleMusic(true));
 for (const eventName of ["play", "pause", "ended", "emptied", "error"]) {
   musicPlayer.addEventListener(eventName, updateMusicToggle);
 }
 el["open-background-music"].addEventListener("click", () => {
   el["background-music"].showModal();
-  playMusic();
 });
 musicPlayer.addEventListener("playing", () => {
   musicStatus.hidden = true;
@@ -2781,12 +2856,14 @@ musicFile.addEventListener("change", () => {
     musicStatus.hidden = false;
     return;
   }
-  if (musicPlayer.src.startsWith("blob:")) URL.revokeObjectURL(musicPlayer.src);
-  musicPlayer.src = URL.createObjectURL(file);
-  musicPlayer.hidden = false;
-  el["music-track"].textContent = file.name;
+  if (experimentVisit) experimentVisit.useSceneTrack = false;
+  setMusicTrack({ src: URL.createObjectURL(file), title: file.name });
 });
 musicPlayer.addEventListener("error", () => {
+  if (currentTrack === experimentTrack) {
+    experimentTrackAvailable = false;
+    updateMusicTrackChoices();
+  }
   musicPlayer.hidden = true;
   reportMusicError("无法播放这份音频，请在工具箱的背景音乐里换一个文件。");
 });

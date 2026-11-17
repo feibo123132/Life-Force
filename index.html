@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./ranch.css">
   <script src="./save-sync.js" defer></script>
   <script src="./forest.js" defer></script>
+  <script src="./experiment-dog.js" defer></script>
   <script src="./account.js" defer></script>
   <script src="./ranch.js" defer></script>
 </head>
@@ -81,6 +82,7 @@
           <img class="scene-image" id="scene-image" src="./assets/peach-valley-farm.webp" width="1672" height="941" alt="山谷里，溪流穿过木桥，农田坐落在泉水和木屋之间。">
           <div class="plots" id="plots" role="group" aria-label="农田"></div>
           <div class="orbs" id="orbs" role="group" aria-label="家门口的待收生命力"></div>
+          <div class="experiment-dog" id="experiment-dog" role="img" aria-label="穿粉色背心的小白狗" hidden></div>
           <button class="cabin" id="cabin" type="button" aria-label="打开木屋里的今日行动"></button>
         </div>
       </div>
@@ -241,7 +243,7 @@
   <dialog id="toolbox" aria-labelledby="toolbox-title">
     <h2 class="visually-hidden" id="toolbox-title">工具箱</h2>
     <form method="dialog"><button class="toolbox-close" type="submit" aria-label="关闭工具箱"></button></form>
-    <button class="toolbox-option" id="open-background-music" type="button" aria-label="背景音乐设置"></button>
+    <button class="toolbox-option" id="open-background-music" type="button" aria-label="背景音乐清单" aria-haspopup="dialog"></button>
     <button id="toolbox-music-switch" type="button" role="switch" aria-checked="false" aria-label="背景音乐"></button>
     <button class="toolbox-option" id="open-life-transfer" type="button" aria-label="生命力传递"></button>
     <button class="toolbox-option" id="open-account" type="button">
@@ -354,6 +356,7 @@
   <dialog id="background-music" aria-labelledby="background-music-title">
     <div class="dialog-heading"><h2 id="background-music-title">背景音乐</h2><form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭"><svg aria-hidden="true"><use href="#close"/></svg></button></form></div>
     <div class="music-controls">
+      <div class="music-track-list" id="music-track-list" role="group" aria-label="可选曲目"></div>
       <button class="primary" id="choose-music" type="button">选择本地音频</button>
       <input id="music-file" type="file" accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg,.opus" hidden>
       <p class="guide" id="music-track">Sunny Mornings · Peder B. Helland</p>
