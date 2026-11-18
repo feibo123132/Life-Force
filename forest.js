@@ -11,7 +11,7 @@ const defaultActionCategories = new Map([
   ["all", "全部"], ["study", "学习"], ["work", "工作"],
   ["exercise", "锻炼"], ["music", "音乐"], ["other", "其它"],
 ]);
-const dailyActionGoal = 5;
+const legacyDailyActionGoal = 5;
 const dailyActionBonus = "daily-action-bonus";
 const whaleMoodBonus = "whale-mood-bonus";
 // The old IDs are needed to keep existing crops on the same tile where possible.
@@ -476,7 +476,8 @@ function pruneActionEntries(entries, habits) {
   const activeIds = new Set(habits.map(habit => habit.id));
   const remaining = entries.filter(entry => activeIds.has(entry.kind) || [dailyActionBonus, whaleMoodBonus, "sample"].includes(entry.kind));
   const totals = dailyActionTotals(remaining);
-  return remaining.filter(entry => entry.kind !== dailyActionBonus || (totals.get(entry.date) ?? 0) >= dailyActionGoal);
+  return remaining.filter(entry => entry.kind !== dailyActionBonus ||
+    (totals.get(entry.date) ?? 0) >= (entry.goal ?? legacyDailyActionGoal));
 }
 
 const forestStorage = {
@@ -732,12 +733,16 @@ function dailyActionTotals(entries) {
   return totals;
 }
 
+function dailyActionCompletionDays(entries) {
+  return new Set(entries.filter(entry => entry.kind === dailyActionBonus).map(entry => entry.date));
+}
+
 function dailyActionStreak(day) {
-  const totals = dailyActionTotals(state.entries);
+  const completeDays = dailyActionCompletionDays(state.entries);
   const cursor = new Date(`${day}T00:00:00Z`);
-  if ((totals.get(day) ?? 0) < dailyActionGoal) cursor.setUTCDate(cursor.getUTCDate() - 1);
+  if (!completeDays.has(day)) cursor.setUTCDate(cursor.getUTCDate() - 1);
   let streak = 0;
-  while ((totals.get(cursor.toISOString().slice(0, 10)) ?? 0) >= dailyActionGoal) {
+  while (completeDays.has(cursor.toISOString().slice(0, 10))) {
     streak++;
     cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
@@ -749,6 +754,7 @@ function renderActionCalendar() {
   const focused = document.activeElement;
   let nextFocus;
   const totals = dailyActionTotals(state.entries);
+  const completeDays = dailyActionCompletionDays(state.entries);
   const days = [];
   const date = new Date(calendarMonth);
   const month = date.getUTCMonth();
@@ -765,7 +771,7 @@ function renderActionCalendar() {
     button.setAttribute("aria-label", `${key}，已完成 ${completed} 项行动`);
     button.setAttribute("aria-pressed", String(key === calendarDate));
     if (key === today) button.setAttribute("aria-current", "date");
-    if (completed) button.dataset.progress = completed >= dailyActionGoal ? "complete" : "partial";
+    if (completed) button.dataset.progress = completeDays.has(key) ? "complete" : "partial";
     if (focused?.dataset.calendarDate === key) nextFocus = button;
     button.addEventListener("click", () => {
       calendarDate = key;
@@ -924,10 +930,14 @@ function habitCategory(habit) {
   return category !== "all" && actionCategories.has(category) ? category : "other";
 }
 
+function actionCategoryLabel(label) {
+  return label.replace(/^⚠\uFE0F?\s*(?=注意$)/u, "");
+}
+
 function renderActionCategories() {
   actionCategories = new Map(defaultActionCategories);
   actionCategories.delete("other");
-  for (const { id, label } of state.customActionCategories) actionCategories.set(id, label);
+  for (const { id, label } of state.customActionCategories) actionCategories.set(id, actionCategoryLabel(label));
   actionCategories.set("other", defaultActionCategories.get("other"));
   if (!actionCategories.has(actionFilter)) actionFilter = "all";
   const tabs = el["action-categories"];
@@ -945,6 +955,7 @@ function renderActionCategories() {
     artwork.setAttribute("aria-hidden", "true");
     if (category === "all") artwork.innerHTML = icon("action-grid");
     else if (label.trim() === "摄影") artwork.innerHTML = icon("action-camera");
+    else if (label === "注意") artwork.innerHTML = icon("action-warning");
     else artwork.classList.add("action-art");
     const name = document.createElement("span");
     name.textContent = label;
@@ -1075,7 +1086,8 @@ function saveHabits(habits, entries = state.entries) {
   const previousHabits = state.habits;
   const previousEntries = state.entries;
   state.habits = habits;
-  state.entries = entries;
+  state.entries = [...entries];
+  if (!awardDailyActionBonus(state, todayKey())) state.entries = entries;
   if (!saveState()) {
     state.habits = previousHabits;
     state.entries = previousEntries;
@@ -1083,7 +1095,7 @@ function saveHabits(habits, entries = state.entries) {
     return false;
   }
   renderHabits();
-  if (entries !== previousEntries) renderOrbs();
+  if (state.entries !== previousEntries) renderOrbs();
   updateControls();
   return true;
 }
@@ -1107,7 +1119,7 @@ el["add-action-category"].addEventListener("click", () => {
 categoryName.addEventListener("input", () => categoryName.setCustomValidity(""));
 el["action-category-form"].addEventListener("submit", event => {
   event.preventDefault();
-  const label = categoryName.value.trim();
+  const label = actionCategoryLabel(categoryName.value.trim());
   if (!label || [...actionCategories.values()].includes(label)) {
     categoryName.setCustomValidity(label ? "这个分类已存在。" : "请输入分类名称。");
     categoryName.reportValidity();
@@ -1318,19 +1330,38 @@ function updateControls() {
     button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成" : done ? "取消完成" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
   }
+  const goal = habitButtons.size;
   const count = document.createElement("span");
   count.textContent = completedCount;
-  el["action-count"].replaceChildren(count, ` / ${habitButtons.size}`);
-  const progress = habitButtons.size ? completedCount / habitButtons.size : 0;
+  el["action-count"].replaceChildren(count, ` / ${goal}`);
+  const progress = goal ? completedCount / goal : 0;
   el["action-progress"].style.setProperty("--progress", `${progress * 100}%`);
   for (const [index, leaf] of [...el["action-progress"].querySelectorAll("i")].entries()) {
     leaf.classList.toggle("is-complete", index < Math.floor(progress * 5));
   }
   el["action-total"].textContent = `+${possibleReward}`;
+  // Existing saves may already have all of today's actions marked complete.
+  if (goal > 0 && completedCount === goal && !completed.has(dailyActionBonus)) {
+    const bonus = awardDailyActionBonus(state, day);
+    if (bonus) {
+      if (saveState()) {
+        completed.set(dailyActionBonus, bonus);
+        renderOrbs();
+      } else {
+        state.entries.pop();
+      }
+    }
+  }
+  const hasBonus = completed.has(dailyActionBonus);
+  el["action-bonus-goal"].textContent = goal;
+  el["action-bonus-details"].hidden = goal === 0;
+  el["action-bonus-empty"].hidden = goal > 0;
+  el["action-bonus-prefix"].textContent = hasBonus && completedCount < goal ? "今日共" : "今日完成";
+  el["action-bonus-verb"].textContent = hasBonus ? "已额外获得" : "可额外获得";
   const streak = dailyActionStreak(day);
   el["action-streak"].textContent = streak;
   el["open-action-calendar"].setAttribute("aria-description", `连续完成 ${streak} 天`);
-  el["action-bonus-copy"].classList.toggle("is-earned", completed.has(dailyActionBonus));
+  el["action-bonus-copy"].classList.toggle("is-earned", hasBonus);
   if (el["action-calendar-dialog"].open) renderActionCalendar();
 
   const balance = availableEnergy();
@@ -1561,9 +1592,10 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
   }
 
   const dayCount = dailyActionTotals(state.entries).get(date) ?? 0;
-  const bonus = dayCount <= dailyActionGoal && state.entries.find(item => item.date === date && item.kind === dailyActionBonus);
+  const bonus = state.entries.find(item => item.date === date && item.kind === dailyActionBonus &&
+    dayCount <= (item.goal ?? legacyDailyActionGoal));
   if (bonus && spent.has(bonus.id)) {
-    status.textContent = "当天的额外奖励已花费，取消这项行动会低于 5 项，无法撤销。";
+    status.textContent = "当天的额外奖励已花费，撤销这项行动后将无法满足奖励条件。";
     return;
   }
   const previous = state.entries;
@@ -1580,26 +1612,42 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
   status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
 }
 
+function awardDailyActionBonus(snapshot, date) {
+  const id = `${date}:${dailyActionBonus}`;
+  if (snapshot.entries.some(entry => entry.id === id)) return;
+
+  const today = todayKey();
+  // Old calendar dates have no saved list of that day's scheduled actions.
+  let goal = legacyDailyActionGoal;
+  if (date === today) {
+    const completed = new Set(snapshot.entries.filter(entry => entry.date === date).map(entry => entry.kind));
+    const habits = snapshot.habits.filter(habit => actionAvailableOn(habit, date, today));
+    goal = habits.length;
+    if (goal === 0 || !habits.every(habit => completed.has(habit.id))) return;
+  } else if ((dailyActionTotals(snapshot.entries).get(date) ?? 0) < goal) {
+    return;
+  }
+
+  // A deleted action can invalidate the record after its bonus point was spent.
+  const collected = spentEnergyIds(snapshot).has(id);
+  const actionLabel = `${date === today ? "今日" : ""}完成 ${goal} 项行动奖励`;
+  const bonus = { id, date, kind: dailyActionBonus, actionLabel, goal, reward: 1, collected };
+  snapshot.entries.push(bonus);
+  return bonus;
+}
+
 function addActionEntry(habit, date, source, snapshot = state) {
   const { id: kind } = habit;
   const actionLabel = habit.description ? `${habit.name} · ${habit.description}` : habit.name;
   const reward = actionReward(habit);
   snapshot.entries.push({ id: `${date}:${kind}`, date, kind, actionLabel, reward, collected: false, source });
-  const bonusId = `${date}:${dailyActionBonus}`;
-  const earnedBonus = (dailyActionTotals(snapshot.entries).get(date) ?? 0) >= dailyActionGoal
-    && !snapshot.entries.some(entry => entry.id === bonusId);
-  // A deleted action can invalidate the record after its bonus point was spent.
-  const bonusAlreadySpent = earnedBonus && spentEnergyIds(snapshot).has(bonusId);
-  if (earnedBonus) {
-    const actionLabel = `${date === todayKey() ? "今日" : ""}完成 ${dailyActionGoal} 项行动奖励`;
-    snapshot.entries.push({ id: bonusId, date, kind: dailyActionBonus, actionLabel, reward: 1, collected: bonusAlreadySpent });
-  }
-  return { reward, earnedBonus: earnedBonus && !bonusAlreadySpent };
+  const bonus = awardDailyActionBonus(snapshot, date);
+  return { reward, bonus };
 }
 
 function record(habit, date, status) {
   const previousLength = state.entries.length;
-  const { reward, earnedBonus } = addActionEntry(habit, date);
+  const { reward, bonus } = addActionEntry(habit, date);
   if (!saveState()) {
     state.entries.length = previousLength;
     status.textContent = "浏览器无法保存，标记完成失败。";
@@ -1607,8 +1655,8 @@ function record(habit, date, status) {
   }
   renderOrbs();
   updateControls();
-  status.textContent = earnedBonus
-    ? `已完成 ${dailyActionGoal} 项行动，额外获得 1 点待领取生命力。`
+  status.textContent = bonus && !bonus.collected
+    ? `已完成 ${bonus.goal} 项行动，额外获得 1 点待领取生命力。`
     : `已标记完成，${reward} 点生命力可在家门口领取。`;
 }
 

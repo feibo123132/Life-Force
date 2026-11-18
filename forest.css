@@ -202,6 +202,7 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
   aspect-ratio: 1;
   pointer-events: none;
 }
+.experiment-dog-filter { position: absolute; width: 0; height: 0; }
 .experiment-dog::before, .experiment-dog::after {
   position: absolute;
   content: "";
@@ -215,6 +216,7 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
 }
 .experiment-dog::after {
   inset: 0;
+  filter: url("#experiment-dog-color");
   transform: translate(-50%, -87%) scaleX(-1);
   background: url("./assets/experiment-dog-sit.webp") var(--dog-expression, 50% 0%) / 300% 200% no-repeat;
 }
