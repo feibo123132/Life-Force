@@ -1157,6 +1157,14 @@ dialog button:focus-visible { outline-color: #55713b; }
 .habit-category[data-category="study"] { background: #d6cdef; border-color: #afa0dc; color: #544374; }
 .habit-category[data-category="exercise"] { background: #d4e58e; border-color: #adc94d; color: #3d5715; }
 .habit-category[data-category="music"] { background: #f8c6b5; border-color: #e9a091; color: #803c2a; }
+.habit-title { display: flex; align-items: center; gap: .55cqw; min-width: 0; }
+.habit-title strong { min-width: 0; }
+.habit-repeat { flex: none; padding: .1em .45em; border: 1px solid transparent; border-radius: .85cqw; background: #f7ecd4; color: #8a6b3f; font-size: clamp(8px, 1.5cqw, 14px); font-weight: 800; line-height: 1.5; white-space: nowrap; }
+.habit-repeat[data-repeat="weekly"] { border-color: #9db6d3; background: #e6f0fb; color: #33536f; }
+.habit-repeat[data-repeat="once"] { border-color: #e6b19c; background: #fde4d5; color: #8a4529; }
+.action-row[data-week="done"] { background: linear-gradient(110deg, #f6f2d6, #eef1cf); }
+.action-row[data-week="done"] .habit-control { --art-x: 979; --art-y: 432; --art-w: 55; --art-h: 55; opacity: .62; }
+.action-row[data-week="done"] .habit-repeat { border-color: #b8c883; background: #eaf0c6; color: #4c641f; }
 .action-row .habit-copy { gap: .25cqw; overflow-wrap: anywhere; }
 .action-row .habit-copy strong { overflow: hidden; font-size: clamp(11px, 2.33cqw, 21px); line-height: 1.18; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; }
 .action-row .habit-copy small { display: -webkit-box; overflow: hidden; color: #694b28; font-size: clamp(9px, 1.78cqw, 16px); line-height: 1.19; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -1178,6 +1186,13 @@ dialog button:focus-visible { outline-color: #55713b; }
 .action-streak p, .action-streak-days { font-size: clamp(9px, 1.86cqw, 17px); line-height: 1.35; font-weight: 750; }
 .action-streak p strong { color: #47671a; background: #e5eaa4; padding: .12em .28em; border-radius: .45em; white-space: nowrap; }
 .action-streak p.is-earned strong { color: #365710; background: #cce48a; }
+#action-history-copy { display: block; }
+.action-history-lines { min-width: 0; }
+#action-average-line { margin-left: .85em; color: #6b4a24; white-space: nowrap; }
+#action-average-line::before { content: "·"; margin-right: .45em; color: #b58b52; font-weight: 800; }
+#action-best-line.is-today strong { color: #2f4f0c; background: #d3eb95; }
+#action-best-line[data-empty="true"] b { color: #8a6a42; font-weight: 750; }
+#action-best-points[hidden] { display: none; }
 .action-streak p b, .action-streak-days strong { font-size: 1.33em; }
 .action-streak-days { display: flex; align-items: center; gap: .55em; padding: .45em .6em; border: 1px solid #d7a45c; border-radius: 1.65cqw; background: #fff2d2; box-shadow: inset 0 0 0 2px #ffe6ac; }
 .action-streak-days:hover { background: #ffe9b6; }
@@ -1231,9 +1246,16 @@ dialog button:focus-visible { outline-color: #55713b; }
 .action-editor-form input[type="number"] { width: 9ch; }
 .action-reward-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
 .action-reward-row > div { display: grid; align-content: start; gap: 6px; }
+.action-field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.action-field-row > div { display: grid; align-content: start; gap: 6px; min-width: 0; }
 .action-praise-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .action-praise-field input[type="number"] { width: 11ch; max-width: 100%; }
 .action-praise-field output { color: #46612a; font-weight: 750; }
+.action-weekly-row { display: grid; gap: 6px; padding: 8px 10px; border: 1px dashed #d9b47a; border-radius: 8px; background: #fff3d6; }
+.action-weekly-row[hidden] { display: none; }
+.action-weekly-field { display: flex; align-items: center; gap: 8px; }
+.action-weekly-field input[type="number"] { width: 7ch; }
+.action-weekly-field span { color: #6b4a24; font-size: 13px; font-weight: 750; }
 :is(#action-editor-status, #action-category-status):empty { display: none; }
 .action-editor-buttons { display: flex; justify-content: flex-end; margin-top: 6px; }
 .action-delete { min-height: 44px; padding: 0 14px; border: 1px solid #c58b6c; border-radius: 8px; background: #f9e3d4; color: #843c27; font-size: 13px; font-weight: 700; }

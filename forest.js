@@ -1,5 +1,8 @@
 "use strict";
 
+const previewAssetUrl = globalThis.forestPreviewAssetUrl;
+const forestAssetUrl = path => previewAssetUrl?.(path) ?? path;
+
 const defaultHabits = {
   move: { name: "动一动", description: "晚饭后走 5 分钟", icon: "move" },
   study: { name: "专注学习", description: "专注学 15 分钟", icon: "focus" },
@@ -95,6 +98,7 @@ for (let level = 2; level <= maxPlayerLevel; level++) {
 }
 
 const naturalGrowthInterval = 600_000;
+const cropGrowthInterval = previewAssetUrl ? 1_000 : naturalGrowthInterval;
 const plantTiers = new Map([
   [1, 10], [10, 12], [20, 14], [30, 16], [40, 18], [50, 20], [55, 22],
   [60, 24], [65, 28], [70, 32], [75, 36], [80, 40], [85, 44], [90, 48],
@@ -171,8 +175,8 @@ const fertilizers = new Map([
   ["premium", { name: "高级化肥", price: 7, boost: 60 }],
 ]);
 const minimumPrice = Math.min(...Array.from(plants.values(), plant => plant.price));
-const storageKey = "life-forest-v2";
-const demoStorageKey = "life-forest-demo-v1";
+const storageKey = previewAssetUrl ? "life-forest-preview-v1" : "life-forest-v2";
+const demoStorageKey = previewAssetUrl ? "life-forest-preview-demo-v1" : "life-forest-demo-v1";
 const defaultAvatar = "./assets/growth/fir-seedling.webp";
 const shortDate = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
 const calendarMonthFormat = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", timeZone: "UTC" });
@@ -313,7 +317,8 @@ function updateCropTooltip(now = Date.now()) {
   const name = el["crop-tooltip-name"];
   const artwork = el["crop-tooltip-art"];
   if (name.textContent !== species.name) name.textContent = species.name;
-  if (artwork.getAttribute("src") !== species.sprite) artwork.src = species.sprite;
+  const sprite = forestAssetUrl(species.sprite);
+  if (artwork.getAttribute("src") !== sprite) artwork.src = sprite;
   const meter = el["crop-tooltip-progress"];
   meter.max = target;
   meter.value = progress;
@@ -389,7 +394,8 @@ function showOrbTooltip(button) {
 
 function growthStageSprite(id, stage) {
   const { sprite } = plants.get(id);
-  return stage.asset && sprite !== plantPlaceholder.sprite ? `./assets/growth/${id}-${stage.asset}.webp` : sprite;
+  const path = stage.asset && sprite !== plantPlaceholder.sprite ? `./assets/growth/${id}-${stage.asset}.webp` : sprite;
+  return forestAssetUrl(path);
 }
 
 function plantAppearance(tree, now) {
@@ -494,7 +500,7 @@ const forestSave = createForestSaveSync({
   onStatus: updateForestSyncStatus,
 });
 const experimentSave = createForestSaveSync({
-  legacyKey: "life-forest-experiment-v1",
+  legacyKey: previewAssetUrl ? "life-forest-preview-experiment-v1" : "life-forest-experiment-v1",
   storage: forestStorage,
   onChange: () => { if (inExperiment) refreshSavedForest(); },
   onStatus: () => {},
@@ -510,7 +516,7 @@ function readState(save = forestSave) {
     if (save === forestSave) localStorage.removeItem(demoStorageKey);
     const saved = save.read();
     if (saved && Array.isArray(saved.entries) && Array.isArray(saved.trees)) {
-      const habits = Array.isArray(saved.habits) ? saved.habits : initialHabits();
+      const habits = (Array.isArray(saved.habits) ? saved.habits : initialHabits()).map(normalizeHabit);
       const entries = pruneActionEntries(saved.entries, habits);
       const field = migrateField(saved);
       const player = { ...startingState().player, ...saved.player };
@@ -725,6 +731,41 @@ function actionAvailableOn(habit, date, today) {
   return !habit.onlyOn || (habit.onlyOn === date && date === today);
 }
 
+// daily = 日常行动，weekly = 周常行动（一周内累计达标即算完成），once = 日抛行动（仅当天）。
+function habitRepeat(habit) {
+  if (habit?.onlyOn) return "once";
+  return Number.isInteger(habit?.weeklyTarget) && habit.weeklyTarget > 0 ? "weekly" : "daily";
+}
+
+function repeatLabel(habit) {
+  const repeat = habitRepeat(habit);
+  if (repeat === "once") return "今日限定";
+  if (repeat === "weekly") return `每周 ${habit.weeklyTarget} 次`;
+  return "每天";
+}
+
+function weekStart(day) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - (date.getUTCDay() + 6) % 7);
+  return date.toISOString().slice(0, 10);
+}
+
+function weekEnd(day) {
+  const date = new Date(`${weekStart(day)}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 6);
+  return date.toISOString().slice(0, 10);
+}
+
+function weeklyDone(habit, day, entries = state.entries) {
+  const start = weekStart(day);
+  const end = weekEnd(day);
+  return entries.filter(entry => entry.kind === habit.id && entry.date >= start && entry.date <= end).length;
+}
+
+function weeklyTargetMet(habit, day, entries = state.entries) {
+  return habitRepeat(habit) === "weekly" && weeklyDone(habit, day, entries) >= habit.weeklyTarget;
+}
+
 function dailyActionTotals(entries) {
   const totals = new Map();
   for (const { date, kind } of entries) {
@@ -733,20 +774,48 @@ function dailyActionTotals(entries) {
   return totals;
 }
 
-function dailyActionCompletionDays(entries) {
-  return new Set(entries.filter(entry => entry.kind === dailyActionBonus).map(entry => entry.date));
+function normalizeHabit(habit) {
+  if (!habit || typeof habit !== "object") return habit;
+  const target = Number(habit.weeklyTarget);
+  if (!habit.onlyOn && Number.isInteger(target) && target > 0) {
+    return { ...habit, weeklyTarget: Math.min(7, target) };
+  }
+  const { weeklyTarget, ...rest } = habit;
+  return rest;
 }
 
-function dailyActionStreak(day) {
-  const completeDays = dailyActionCompletionDays(state.entries);
-  const cursor = new Date(`${day}T00:00:00Z`);
-  if (!completeDays.has(day)) cursor.setUTCDate(cursor.getUTCDate() - 1);
-  let streak = 0;
-  while (completeDays.has(cursor.toISOString().slice(0, 10))) {
-    streak++;
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
+function dayEnergyTotals(entries) {
+  const totals = new Map();
+  for (const entry of entries) {
+    if (!entry.date || entry.kind === "sample") continue;
+    totals.set(entry.date, (totals.get(entry.date) ?? 0) + actionReward(entry));
   }
-  return streak;
+  return totals;
+}
+
+// 「历史最佳」= 单日获得生命力最多的一天；「累计」= 至今获得的全部生命力；「日均」按有记录的天数折算。
+function actionHistory(entries, day = todayKey()) {
+  const totals = dayEnergyTotals(entries.filter(entry => entry.date <= day));
+  let best;
+  let total = 0;
+  for (const [date, points] of totals) {
+    total += points;
+    if (!best || points > best.points || (points === best.points && date > best.date)) best = { date, points };
+  }
+  const days = totals.size;
+  return { best, total, days, average: days ? total / days : 0 };
+}
+
+function habitDetailText(habit, day, weekDone = 0) {
+  const repeat = habitRepeat(habit);
+  const parts = [];
+  if (repeat === "weekly") {
+    parts.push(`本周 ${weekDone}/${habit.weeklyTarget}${weekDone >= habit.weeklyTarget ? " · 已达标" : ""}`);
+  } else if (repeat === "once") {
+    parts.push("仅今天");
+  }
+  parts.push(actionPraiseLabel(habit.praiseScore), habit.description);
+  return parts.filter(Boolean).join(" · ");
 }
 
 function renderActionCalendar() {
@@ -754,7 +823,13 @@ function renderActionCalendar() {
   const focused = document.activeElement;
   let nextFocus;
   const totals = dailyActionTotals(state.entries);
-  const completeDays = dailyActionCompletionDays(state.entries);
+  // 日历上的「完成」= 当天的日常行动都做完了（周常按周另算）。
+  const dailyIds = new Set(state.habits.filter(habit => habitRepeat(habit) === "daily").map(habit => habit.id));
+  const dailyDoneByDate = new Map();
+  for (const entry of state.entries) {
+    if (!entry.date || !dailyIds.has(entry.kind)) continue;
+    dailyDoneByDate.set(entry.date, (dailyDoneByDate.get(entry.date) ?? 0) + 1);
+  }
   const days = [];
   const date = new Date(calendarMonth);
   const month = date.getUTCMonth();
@@ -763,6 +838,7 @@ function renderActionCalendar() {
   while (date.getUTCMonth() === month) {
     const key = date.toISOString().slice(0, 10);
     const completed = totals.get(key) ?? 0;
+    const complete = dailyIds.size > 0 && (dailyDoneByDate.get(key) ?? 0) >= dailyIds.size;
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = date.getUTCDate();
@@ -771,7 +847,7 @@ function renderActionCalendar() {
     button.setAttribute("aria-label", `${key}，已完成 ${completed} 项行动`);
     button.setAttribute("aria-pressed", String(key === calendarDate));
     if (key === today) button.setAttribute("aria-current", "date");
-    if (completed) button.dataset.progress = completeDays.has(key) ? "complete" : "partial";
+    if (completed) button.dataset.progress = complete ? "complete" : "partial";
     if (focused?.dataset.calendarDate === key) nextFocus = button;
     button.addEventListener("click", () => {
       calendarDate = key;
@@ -791,15 +867,19 @@ function renderActionCalendar() {
   el["action-calendar-count"].textContent = `已完成 ${totals.get(calendarDate) ?? 0} / ${calendarHabits.length}`;
   const habits = calendarHabits.map(habit => {
     const entry = completed.get(habit.id);
+    const repeat = habitRepeat(habit);
+    const weekDone = repeat === "weekly" ? weeklyDone(habit, calendarDate) : 0;
+    const weekMet = repeat === "weekly" && weekDone >= habit.weeklyTarget;
     const button = document.createElement("button");
     button.type = "button";
-    button.disabled = !actionAvailableOn(habit, calendarDate, today);
+    button.disabled = !actionAvailableOn(habit, calendarDate, today) || (weekMet && !entry);
     button.dataset.calendarHabit = habit.id;
     button.setAttribute("aria-pressed", String(Boolean(entry)));
     const name = document.createElement("strong");
     name.textContent = habit.name;
     const label = document.createElement("span");
-    label.textContent = entry?.source === "finance-link" ? "自动完成" : entry ? "已完成" : `+${actionReward(habit)} 标记完成`;
+    const status = entry?.source === "finance-link" ? "自动完成" : entry ? "已完成" : `+${actionReward(habit)} 标记完成`;
+    label.textContent = repeat === "weekly" ? `${status} · 本周 ${weekDone}/${habit.weeklyTarget}` : status;
     button.append(name, label);
     button.addEventListener("click", () => toggleActionCompletion(habit.id, calendarDate, el["action-calendar-status"]));
     if (focused?.dataset.calendarHabit === habit.id) nextFocus = button;
@@ -1016,12 +1096,21 @@ function renderHabits(day = todayKey()) {
     chip.title = chip.textContent;
     const copy = document.createElement("span");
     copy.className = "habit-copy";
+    const title = document.createElement("span");
+    title.className = "habit-title";
     const name = document.createElement("strong");
     name.textContent = habit.name;
-    copy.append(name);
-    const detail = [habit.onlyOn && "仅今天", actionPraiseLabel(habit.praiseScore), habit.description].filter(Boolean).join(" · ");
+    const repeat = habitRepeat(habit);
+    const repeatChip = document.createElement("span");
+    repeatChip.className = "habit-repeat";
+    repeatChip.dataset.repeat = repeat;
+    repeatChip.textContent = repeatLabel(habit);
+    title.append(name, repeatChip);
+    copy.append(title);
+    const detail = habitDetailText(habit, day, repeat === "weekly" ? weeklyDone(habit, day) : 0);
+    let description;
     if (detail) {
-      const description = document.createElement("small");
+      description = document.createElement("small");
       description.textContent = detail;
       description.title = detail;
       copy.append(description);
@@ -1051,7 +1140,7 @@ function renderHabits(day = todayKey()) {
     edit.addEventListener("click", () => openActionEditor(habit.id));
     row.append(button, edit);
     el.habits.append(row);
-    habitButtons.set(habit.id, { row, button, edit, rewardAmount });
+    habitButtons.set(habit.id, { row, button, edit, rewardAmount, description });
   }
   filterHabits();
 }
@@ -1069,7 +1158,9 @@ function openActionEditor(id) {
   el["action-name"].setCustomValidity("");
   el["action-description"].value = habit?.description ?? "";
   el["action-category"].value = habit ? habitCategory(habit) : actionFilter === "all" ? "other" : actionFilter;
-  el["action-repeat"].value = habit?.onlyOn ? "once" : "daily";
+  el["action-repeat"].value = habit ? habitRepeat(habit) : "daily";
+  el["action-weekly-target"].value = habit?.weeklyTarget ?? 4;
+  updateWeeklyField();
   el["action-reward"].value = actionReward(habit);
   el["action-praise"].value = habit?.praiseScore ?? "";
   el["action-praise-quality"].value = actionPraiseLabel(habit?.praiseScore);
@@ -1082,12 +1173,17 @@ function openActionEditor(id) {
   el["action-name"].focus();
 }
 
+function updateWeeklyField() {
+  el["action-weekly-row"].hidden = el["action-repeat"].value !== "weekly";
+}
+
+el["action-repeat"].addEventListener("change", updateWeeklyField);
+
 function saveHabits(habits, entries = state.entries) {
   const previousHabits = state.habits;
   const previousEntries = state.entries;
   state.habits = habits;
   state.entries = [...entries];
-  if (!awardDailyActionBonus(state, todayKey())) state.entries = entries;
   if (!saveState()) {
     state.habits = previousHabits;
     state.entries = previousEntries;
@@ -1174,9 +1270,15 @@ el["action-editor-form"].addEventListener("input", () => {
   }
   const description = el["action-description"].value.trim();
   const category = el["action-category"].value;
-  const onlyOn = el["action-repeat"].value === "once" ? day : undefined;
+  const repeat = el["action-repeat"].value;
+  if (repeat === "weekly" && !el["action-weekly-target"].validity.valid) {
+    el["action-editor-status"].textContent = "每周目标次数请输入 1–7 的整数。";
+    return;
+  }
+  const onlyOn = repeat === "once" ? day : undefined;
+  const weeklyTarget = repeat === "weekly" ? el["action-weekly-target"].valueAsNumber : undefined;
   const praiseScore = praiseLabel ? actionPraiseInput.valueAsNumber : undefined;
-  const habits = state.habits.map(item => item === habit ? { ...item, name, description, category, reward, onlyOn, praiseScore } : item);
+  const habits = state.habits.map(item => item === habit ? { ...item, name, description, category, reward, onlyOn, weeklyTarget, praiseScore } : item);
   if (saveHabits(habits)) el["action-editor-status"].textContent = "已保存";
 });
 el["action-editor-form"].addEventListener("submit", event => {
@@ -1193,14 +1295,20 @@ el["action-editor-form"].addEventListener("submit", event => {
   const reward = el["action-reward"].valueAsNumber;
   const praiseScore = actionPraiseInput.value ? actionPraiseInput.valueAsNumber : undefined;
   const id = crypto.randomUUID?.() ?? `action-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
-  const onlyOn = el["action-repeat"].value === "once" ? todayKey() : undefined;
-  const habit = { id, name, description, category, reward, onlyOn, praiseScore };
+  const repeat = el["action-repeat"].value;
+  if (repeat === "weekly" && !el["action-weekly-target"].validity.valid) {
+    el["action-editor-status"].textContent = "每周目标次数请输入 1–7 的整数。";
+    return;
+  }
+  const onlyOn = repeat === "once" ? todayKey() : undefined;
+  const weeklyTarget = repeat === "weekly" ? el["action-weekly-target"].valueAsNumber : undefined;
+  const habit = { id, name, description, category, reward, onlyOn, weeklyTarget, praiseScore };
   if (saveHabits([...state.habits, habit])) el["action-editor"].close();
 });
 el["delete-action"].addEventListener("click", () => {
   const habit = state.habits.find(item => item.id === editingHabit);
   if (!habit) return;
-  el["action-delete-message"].textContent = `删除「${habit.name}」？相关记录、待领取和未花费的生命力会一起移除。删除后未达标的额外奖励也会撤回。`;
+  el["action-delete-message"].textContent = `删除「${habit.name}」？相关记录和未领取的生命力会一起移除。`;
   el["action-editor-form"].hidden = true;
   el["action-delete-confirm"].hidden = false;
   el["action-editor-status"].textContent = "";
@@ -1263,7 +1371,7 @@ function updatePlayer() {
   el["player-xp"].setAttribute("aria-label", atMaxLevel ? "已满级" : "升级经验");
   el["player-xp-label"].textContent = atMaxLevel ? "已满级" : `${xp} / ${needed} 经验`;
   el["player-gold"].textContent = state.player.gold;
-  const avatar = state.player.avatar || defaultAvatar;
+  const avatar = state.player.avatar || forestAssetUrl(defaultAvatar);
   el["player-avatar-image"].src = avatar;
   el["profile-avatar-preview"].src = avatar;
   el["open-profile"].classList.toggle("custom-avatar", Boolean(state.player.avatar));
@@ -1314,23 +1422,45 @@ function updateControls() {
   updatePlayer();
   const completed = new Map(state.entries.filter(entry => entry.date === day).map(entry => [entry.kind, entry]));
   let completedCount = 0;
+  let goal = 0;
   let possibleReward = 0;
   for (const habit of state.habits) {
     const controls = habitButtons.get(habit.id);
     if (!controls) continue;
-    const { button, rewardAmount } = controls;
+    const { button, rewardAmount, description, row } = controls;
     const entry = completed.get(habit.id);
     const done = Boolean(entry);
     const reward = actionReward(entry ?? habit);
-    if (done) completedCount++;
-    possibleReward += reward;
+    const repeat = habitRepeat(habit);
+    const weekDone = repeat === "weekly" ? weeklyDone(habit, day) : 0;
+    const weekMet = repeat === "weekly" && weekDone >= habit.weeklyTarget;
+    // 本周已达标的周常行动不再占今天的份额；其余行动在今天都算「待办」。
+    const onTodayPlate = done || repeat !== "weekly" || !weekMet;
+    if (onTodayPlate) {
+      goal++;
+      if (done) completedCount++;
+      possibleReward += reward;
+    }
+    if (description && repeat === "weekly") {
+      const text = habitDetailText(habit, day, weekDone);
+      description.textContent = text;
+      description.title = text;
+    }
+    row.dataset.week = weekMet ? "done" : "";
     button.setAttribute("aria-pressed", String(done));
     button.setAttribute("aria-label", habit.name);
-    button.setAttribute("aria-description", [actionCategories.get(habitCategory(habit)), habit.onlyOn && "仅今天", actionPraiseLabel(habit.praiseScore), habit.description, `${reward} 点生命力`].filter(Boolean).join("，"));
-    button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成" : done ? "取消完成" : "标记完成";
+    button.setAttribute("aria-description", [
+      actionCategories.get(habitCategory(habit)),
+      repeatLabel(habit),
+      repeat === "weekly" ? `本周 ${weekDone}/${habit.weeklyTarget}` : habit.onlyOn && "仅今天",
+      weekMet ? "本周已达标" : "",
+      actionPraiseLabel(habit.praiseScore),
+      habit.description,
+      `${reward} 点生命力`,
+    ].filter(Boolean).join("，"));
+    button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成" : done ? "取消完成" : weekMet ? "本周已达标，下周继续" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
   }
-  const goal = habitButtons.size;
   const count = document.createElement("span");
   count.textContent = completedCount;
   el["action-count"].replaceChildren(count, ` / ${goal}`);
@@ -1340,28 +1470,17 @@ function updateControls() {
     leaf.classList.toggle("is-complete", index < Math.floor(progress * 5));
   }
   el["action-total"].textContent = `+${possibleReward}`;
-  // Existing saves may already have all of today's actions marked complete.
-  if (goal > 0 && completedCount === goal && !completed.has(dailyActionBonus)) {
-    const bonus = awardDailyActionBonus(state, day);
-    if (bonus) {
-      if (saveState()) {
-        completed.set(dailyActionBonus, bonus);
-        renderOrbs();
-      } else {
-        state.entries.pop();
-      }
-    }
-  }
-  const hasBonus = completed.has(dailyActionBonus);
-  el["action-bonus-goal"].textContent = goal;
-  el["action-bonus-details"].hidden = goal === 0;
-  el["action-bonus-empty"].hidden = goal > 0;
-  el["action-bonus-prefix"].textContent = hasBonus && completedCount < goal ? "今日共" : "今日完成";
-  el["action-bonus-verb"].textContent = hasBonus ? "已额外获得" : "可额外获得";
-  const streak = dailyActionStreak(day);
-  el["action-streak"].textContent = streak;
-  el["open-action-calendar"].setAttribute("aria-description", `连续完成 ${streak} 天`);
-  el["action-bonus-copy"].classList.toggle("is-earned", hasBonus);
+  const { best, total: historyTotal, average } = actionHistory(state.entries, day);
+  el["action-best-day"].textContent = best ? formatDate(best.date) : "暂无记录";
+  el["action-best-points"].textContent = best ? `+${best.points}` : "";
+  el["action-best-points"].hidden = !best;
+  el["action-best-line"].dataset.empty = best ? "" : "true";
+  el["action-best-line"].classList.toggle("is-today", best?.date === day);
+  el["action-history-total"].textContent = historyTotal;
+  el["action-average"].textContent = Number.isInteger(average) ? average : average.toFixed(1);
+  el["open-action-calendar"].setAttribute("aria-description", best
+    ? `历史最佳 ${formatDate(best.date)}，${best.points} 点生命力；累计 ${historyTotal} 点，日均 ${el["action-average"].textContent} 点`
+    : "暂无历史记录");
   if (el["action-calendar-dialog"].open) renderActionCalendar();
 
   const balance = availableEnergy();
@@ -1486,11 +1605,11 @@ function renderPlots(growingIndex = -1) {
     const sampleRow = Math.round(row * (paintedRows - 1) / (fieldSize - 1));
     const sampleColumn = Math.round(column * (paintedColumns - 2) / (fieldSize - 1));
     const source = locked ? turfSamples[sampleRow] : tilePoints(paintedField, sampleRow, sampleColumn);
-    const artwork = locked ? "peach-valley-terrace" : "peach-valley-farm";
+    const artwork = forestAssetUrl(locked ? "./assets/peach-valley-terrace.webp" : "./assets/peach-valley-farm.webp");
     button.insertAdjacentHTML("beforeend", `
       <svg class="tile-art" aria-hidden="true" viewBox="${left} ${top} ${width} ${height}"
         preserveAspectRatio="none" style="clip-path:${roundedTile(corners)}">
-        <image href="./assets/${artwork}.webp" width="${sceneWidth}" height="${sceneHeight}" transform="${tileArtTransform(source, points)}"/>
+        <image href="${artwork}" width="${sceneWidth}" height="${sceneHeight}" transform="${tileArtTransform(source, points)}"/>
       </svg>
     `);
     button.insertAdjacentHTML("beforeend", '<span class="tile-face"></span>');
@@ -1576,6 +1695,10 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
   if (!habit || date > day || !actionAvailableOn(habit, date, day)) return;
   const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind);
   if (index < 0) {
+    if (weeklyTargetMet(habit, date)) {
+      status.textContent = `本周 ${habit.weeklyTarget} 次已达标，下周继续。`;
+      return;
+    }
     record(habit, date, status);
     return;
   }
@@ -1591,15 +1714,8 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
     return;
   }
 
-  const dayCount = dailyActionTotals(state.entries).get(date) ?? 0;
-  const bonus = state.entries.find(item => item.date === date && item.kind === dailyActionBonus &&
-    dayCount <= (item.goal ?? legacyDailyActionGoal));
-  if (bonus && spent.has(bonus.id)) {
-    status.textContent = "当天的额外奖励已花费，撤销这项行动后将无法满足奖励条件。";
-    return;
-  }
   const previous = state.entries;
-  state.entries = previous.filter(item => item !== entry && item !== bonus);
+  state.entries = previous.filter(item => item !== entry);
   if (!saveState()) {
     state.entries = previous;
     status.textContent = "浏览器无法保存，取消完成失败。";
@@ -1608,32 +1724,8 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
   renderOrbs();
   updateControls();
   const spentByEntry = countSpentEnergyByEntry(spent);
-  const deducted = remainingEntryEnergy(entry, spentByEntry) + (bonus ? remainingEntryEnergy(bonus, spentByEntry) : 0);
+  const deducted = remainingEntryEnergy(entry, spentByEntry);
   status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
-}
-
-function awardDailyActionBonus(snapshot, date) {
-  const id = `${date}:${dailyActionBonus}`;
-  if (snapshot.entries.some(entry => entry.id === id)) return;
-
-  const today = todayKey();
-  // Old calendar dates have no saved list of that day's scheduled actions.
-  let goal = legacyDailyActionGoal;
-  if (date === today) {
-    const completed = new Set(snapshot.entries.filter(entry => entry.date === date).map(entry => entry.kind));
-    const habits = snapshot.habits.filter(habit => actionAvailableOn(habit, date, today));
-    goal = habits.length;
-    if (goal === 0 || !habits.every(habit => completed.has(habit.id))) return;
-  } else if ((dailyActionTotals(snapshot.entries).get(date) ?? 0) < goal) {
-    return;
-  }
-
-  // A deleted action can invalidate the record after its bonus point was spent.
-  const collected = spentEnergyIds(snapshot).has(id);
-  const actionLabel = `${date === today ? "今日" : ""}完成 ${goal} 项行动奖励`;
-  const bonus = { id, date, kind: dailyActionBonus, actionLabel, goal, reward: 1, collected };
-  snapshot.entries.push(bonus);
-  return bonus;
 }
 
 function addActionEntry(habit, date, source, snapshot = state) {
@@ -1641,13 +1733,12 @@ function addActionEntry(habit, date, source, snapshot = state) {
   const actionLabel = habit.description ? `${habit.name} · ${habit.description}` : habit.name;
   const reward = actionReward(habit);
   snapshot.entries.push({ id: `${date}:${kind}`, date, kind, actionLabel, reward, collected: false, source });
-  const bonus = awardDailyActionBonus(snapshot, date);
-  return { reward, bonus };
+  return { reward };
 }
 
 function record(habit, date, status) {
   const previousLength = state.entries.length;
-  const { reward, bonus } = addActionEntry(habit, date);
+  const { reward } = addActionEntry(habit, date);
   if (!saveState()) {
     state.entries.length = previousLength;
     status.textContent = "浏览器无法保存，标记完成失败。";
@@ -1655,9 +1746,7 @@ function record(habit, date, status) {
   }
   renderOrbs();
   updateControls();
-  status.textContent = bonus && !bonus.collected
-    ? `已完成 ${bonus.goal} 项行动，额外获得 1 点待领取生命力。`
-    : `已标记完成，${reward} 点生命力可在家门口领取。`;
+  status.textContent = `已标记完成，${reward} 点生命力可在家门口领取。`;
 }
 
 function applyFinanceLink({ date, recorded, happy }) {
@@ -1723,10 +1812,11 @@ function collect(id) {
 }
 
 function formatPlantGrowthTime(points) {
-  const minutes = points * naturalGrowthInterval / 60_000;
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
-  return `${hours ? `${hours}小时` : ""}${remaining ? `${remaining}分钟` : ""}` || "0";
+  const totalSeconds = points * cropGrowthInterval / 1_000;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const seconds = totalSeconds % 60;
+  return `${hours ? `${hours}小时` : ""}${minutes ? `${minutes}分钟` : ""}${seconds ? `${seconds}秒` : ""}` || "0";
 }
 
 function updatePlantPickerAvailability(balance = availableEnergy()) {
@@ -1750,7 +1840,7 @@ function selectPlantPickerChoice(id) {
   for (const [choiceId, { choice }] of plantOptions) {
     choice.setAttribute("aria-pressed", String(choiceId === id));
   }
-  el["plant-picker-art"].src = species.sprite;
+  el["plant-picker-art"].src = forestAssetUrl(species.sprite);
   el["plant-picker-name"].textContent = species.name;
   el["plant-picker-category"].textContent = plantPickerCategories[species.category ?? "other"][0];
   el["plant-picker-xp"].textContent = `+${species.xp}`;
@@ -1919,7 +2009,7 @@ function plant(index, species) {
   }
   state.trees.push({
     plot: index, species, date: todayKey(), plantedAt: Date.now(),
-    growthTarget: maturity, growthInterval: naturalGrowthInterval, energyIds,
+    growthTarget: maturity, growthInterval: cropGrowthInterval, energyIds,
   });
   if (!saveState()) {
     state.trees.pop();
@@ -1948,7 +2038,7 @@ function showJournal(tree) {
     updateJournalGrowth(tree, now);
   } else {
     el["journal-title"].textContent = "森林手记";
-    el["journal-cover-art"].src = "./assets/forest-journal.webp";
+    el["journal-cover-art"].src = forestAssetUrl("./assets/forest-journal.webp");
   }
   updateJournalRecords(tree);
   el.journal.showModal();
@@ -1974,7 +2064,7 @@ function renderJournalRecords(content, entries, isCrop) {
     const empty = document.createElement("div");
     empty.className = "journal-empty";
     const sprout = document.createElement("img");
-    sprout.src = "./assets/warehouse/sprout-tag.webp";
+    sprout.src = forestAssetUrl("./assets/warehouse/sprout-tag.webp");
     sprout.alt = "";
     const message = document.createElement("p");
     message.textContent = isCrop ? "这株作物没有关联的行动记录。" : "完成一项今日行动，就会在这里留下记录。";
@@ -2032,7 +2122,7 @@ function selectTool(id) {
   hideToolCursor();
   const tool = fieldTools.get(activeTool);
   if (tool?.followsPointer) {
-    el["tool-cursor"].src = `./assets/tools/${tool.artwork}.webp`;
+    el["tool-cursor"].src = forestAssetUrl(`./assets/tools/${tool.artwork}.webp`);
     el["tool-cursor"].dataset.tool = activeTool;
   }
   updateControls();
@@ -2070,9 +2160,9 @@ function syncWorldScene() {
     selectedPlot = journalPlot = pendingDig = undefined;
     inExperiment = nextExperiment;
     el.forest.classList.toggle("is-experiment", inExperiment);
-    el["scene-image"].src = inExperiment
+    el["scene-image"].src = forestAssetUrl(inExperiment
       ? "./assets/peach-valley-experiment.webp"
-      : "./assets/peach-valley-farm.webp";
+      : "./assets/peach-valley-farm.webp");
     el["experiment-dog"].hidden = !inExperiment;
     el["experiment-navigation"].hidden = !inExperiment;
     el["open-ranch"].hidden = inExperiment;
@@ -2124,7 +2214,7 @@ function playToolEffect(tool, tree) {
   toolArt.className = "tool-effect-icon";
   const image = document.createElement("img");
   image.alt = "";
-  image.src = `./assets/tools/${fieldTools.get(tool).artwork}.webp`;
+  image.src = forestAssetUrl(`./assets/tools/${fieldTools.get(tool).artwork}.webp`);
   toolArt.append(image);
 
   if (tool === "harvest") {
@@ -2310,7 +2400,7 @@ function renderWarehouse() {
     const card = document.createElement("li");
     card.className = "warehouse-card";
     card.innerHTML = `
-      <div class="warehouse-slot"><img src="${species.sprite}" alt="" width="112" height="112"></div>
+      <div class="warehouse-slot"><img src="${forestAssetUrl(species.sprite)}" alt="" width="112" height="112"></div>
       <div class="warehouse-card-info">
         <h4>${species.name}</h4>
         <p class="warehouse-quantity">库存 × <strong>${quantity}</strong></p>
@@ -2666,15 +2756,15 @@ el["life-transfer-form"].addEventListener("submit", event => {
   el["life-transfer-status"].textContent = `预览 · 已试传 ${event.submitter.value} 点生命力${hasMessage ? "，附有留言" : ""}`;
 });
 
-const buttonClickSound = new Audio("./assets/sfx/button-click.mp3");
+const buttonClickSound = new Audio(forestAssetUrl("./assets/sfx/button-click.mp3"));
 buttonClickSound.volume = 0.72;
-const journalOpenSound = new Audio("./assets/sfx/journal-open.mp3");
-const shopOpenSound = new Audio("./assets/sfx/shop-open.mp3");
-const cropWaterSound = new Audio("./assets/sfx/crop-water.mp3");
-const sunCollectSound = new Audio("./assets/sfx/sun-collect.mp3");
-const cropHarvestSound = new Audio("./assets/sfx/crop-harvest.mp3");
+const journalOpenSound = new Audio(forestAssetUrl("./assets/sfx/journal-open.mp3"));
+const shopOpenSound = new Audio(forestAssetUrl("./assets/sfx/shop-open.mp3"));
+const cropWaterSound = new Audio(forestAssetUrl("./assets/sfx/crop-water.mp3"));
+const sunCollectSound = new Audio(forestAssetUrl("./assets/sfx/sun-collect.mp3"));
+const cropHarvestSound = new Audio(forestAssetUrl("./assets/sfx/crop-harvest.mp3"));
 const abstractHarvestSounds = new Map();
-const cropSellSound = new Audio("./assets/sfx/crop-sell.mp3");
+const cropSellSound = new Audio(forestAssetUrl("./assets/sfx/crop-sell.mp3"));
 
 function playEffect(sound, onPlaybackError = () => {}) {
   sound.currentTime = 0;
@@ -2682,7 +2772,7 @@ function playEffect(sound, onPlaybackError = () => {}) {
 }
 
 function createAbstractCropSound(id) {
-  return new Audio(`./assets/sfx/crop-harvest-${id}.mp3`);
+  return new Audio(forestAssetUrl(`./assets/sfx/crop-harvest-${id}.mp3`));
 }
 
 function playCropHarvestSound(id) {
@@ -2784,7 +2874,7 @@ function setMusicTrack(track, position = 0) {
   const previous = currentTrack;
   currentTrack = track;
   if (previous !== track || musicPlayer.error) {
-    musicPlayer.src = track.src;
+    musicPlayer.src = forestAssetUrl(track.src);
     if (position) musicPlayer.currentTime = position;
   }
   if (previous !== track && previous !== experimentVisit?.track && previous.src.startsWith("blob:")) {
@@ -2844,7 +2934,7 @@ function checkExperimentTrack() {
     updateMusicTrackChoices();
     selectExperimentTrack();
   }, { once: true });
-  probe.src = experimentTrack.src;
+  probe.src = forestAssetUrl(experimentTrack.src);
 }
 
 function syncExperimentMusic() {
@@ -3059,7 +3149,7 @@ for (const [id, [label, emoji]] of Object.entries(plantPickerCategories)) {
 
 for (const [id, species] of [...plants].sort(([, a], [, b]) => a.unlockLevel - b.unlockLevel)) {
   const sprite = document.createElement("img");
-  sprite.src = species.sprite;
+  sprite.src = forestAssetUrl(species.sprite);
   sprite.alt = "";
   const name = document.createElement("span");
   name.textContent = species.name;

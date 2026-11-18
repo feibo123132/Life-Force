@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "vite --host localhost --port 5200 --strictPort",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "build:preview": "node scripts/build-preview.mjs"
   },
   "devDependencies": {
     "vite": "6.4.1"

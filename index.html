@@ -419,11 +419,14 @@
         </div>
         <div class="action-streak">
           <i class="action-art action-chest" aria-hidden="true"></i>
-          <p id="action-bonus-copy">
-            <span id="action-bonus-details" hidden><span id="action-bonus-prefix">今日完成</span> <b id="action-bonus-goal"></b> 项行动<br><span id="action-bonus-verb">可额外获得</span> <strong>生命力 +1</strong>！</span>
-            <span id="action-bonus-empty">今日暂无行动</span>
+          <p id="action-history-copy">
+            <span class="action-history-lines">
+              <span id="action-best-line">历史最佳 <b id="action-best-day">暂无记录</b> <strong id="action-best-points"></strong></span><br>
+              <span id="action-total-line">累计获得生命力 <strong id="action-history-total">0</strong></span>
+              <span id="action-average-line" title="按有记录的天数计算">日均获得 <strong id="action-average">0</strong></span>
+            </span>
           </p>
-          <button class="action-streak-days" id="open-action-calendar" type="button" aria-label="打开行动日历" aria-haspopup="dialog"><i class="action-art action-calendar" aria-hidden="true"></i><span>连续完成天数 <strong id="action-streak">0</strong> 天</span></button>
+          <button class="action-streak-days" id="open-action-calendar" type="button" aria-label="查看历史情况" aria-haspopup="dialog"><i class="action-art action-calendar" aria-hidden="true"></i><span>历史情况</span></button>
         </div>
         <div class="action-toolbar">
           <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>行动</button>
@@ -480,13 +483,27 @@
       <input id="action-name" maxlength="40" required autofocus>
       <label for="action-description">具体做法（选填）</label>
       <textarea id="action-description" maxlength="140" rows="2"></textarea>
-      <label for="action-category">行动分类</label>
-      <select id="action-category" name="category"></select>
-      <label for="action-repeat">重复频率</label>
-      <select id="action-repeat">
-        <option value="daily">每天</option>
-        <option value="once">仅今天</option>
-      </select>
+      <div class="action-field-row">
+        <div>
+          <label for="action-category">行动分类</label>
+          <select id="action-category" name="category"></select>
+        </div>
+        <div>
+          <label for="action-repeat">重复频率</label>
+          <select id="action-repeat">
+            <option value="daily">每天</option>
+            <option value="weekly">每周</option>
+            <option value="once">仅今天</option>
+          </select>
+        </div>
+      </div>
+      <div class="action-weekly-row" id="action-weekly-row" hidden>
+        <label for="action-weekly-target">每周目标次数</label>
+        <div class="action-weekly-field">
+          <input id="action-weekly-target" type="number" inputmode="numeric" min="1" max="7" step="1" value="4" required>
+          <span>次 / 周</span>
+        </div>
+      </div>
       <div class="action-reward-row">
         <div>
           <label for="action-reward">生命力奖励（点）</label>

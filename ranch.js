@@ -1,6 +1,7 @@
 "use strict";
 
 (() => {
+  const assetUrl = path => globalThis.forestPreviewAssetUrl?.(path) ?? path;
   const scene = document.querySelector("#ranch-scene");
   const ranchView = document.querySelector("#ranch-view");
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -76,7 +77,7 @@
   function showSpriteFrame(animal, pose, index) {
     const { columns, rows } = pose === "walk" ? animal.walkFrames : animal.actionFrames[pose];
     if (animal.sheetPose !== pose) {
-      animal.sheet.style.backgroundImage = `url("./assets/ranch/${animal.spriteSet ?? animal.species}-${pose}.webp")`;
+      animal.sheet.style.backgroundImage = `url("${assetUrl(`./assets/ranch/${animal.spriteSet ?? animal.species}-${pose}.webp`)}")`;
       animal.sheet.style.backgroundSize = `${columns * 100}% ${rows * 100}%`;
       animal.sheetPose = pose;
     }
@@ -117,7 +118,7 @@
       element.style.setProperty("--step-time", `${config.stepTime}ms`);
       element.style.setProperty("--leg-cut", `${config.legCut}%`);
       const sprite = document.createElement("img");
-      sprite.src = `./assets/ranch/${config.species}.webp`;
+      sprite.src = assetUrl(`./assets/ranch/${config.species}.webp`);
       sprite.alt = "";
       sprite.draggable = false;
       const feet = sprite.cloneNode();
