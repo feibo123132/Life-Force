@@ -29,6 +29,8 @@
     <symbol id="action-camera" viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
     <symbol id="action-warning" viewBox="0 0 24 24"><path d="M10.3 4.9a2 2 0 0 1 3.4 0l7.7 12.8a2 2 0 0 1-1.7 3H4.3a2 2 0 0 1-1.7-3Z"/><path d="M12 9v4m0 3.5h.01"/></symbol>
     <symbol id="action-money" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.6"/><path d="M12 7.6v8.8M9.6 10.3h4.8M9.6 13.7h4.8"/></symbol>
+    <symbol id="action-inspiration" viewBox="0 0 24 24"><path d="M9 17v-1.5a6 6 0 1 1 6 0V17ZM9 20h6m-5 3h4M12 1V0M3 5l-2-1m20 0-2 1"/></symbol>
+    <symbol id="art-inspiration" viewBox="0 0 94 90"><rect x="1" y="1" width="92" height="88" rx="15" fill="#ffebbc" stroke="#b68a48"/><g stroke="#8d631e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M37 62v-7a22 22 0 1 1 20 0v7Z" fill="#ffd461"/><path d="M37 69h20m-17 7h14M47 9V5M19 21l-5-5m61 5 5-5M14 43H8m72 0h6M47 60V43m-7-6 7 6 7-6" fill="none"/></g></symbol>
     <symbol id="art-finance" viewBox="0 0 94 90">
       <rect width="94" height="90" rx="19" fill="#fdefcd"/>
       <path d="M39 21h16a3.4 3.4 0 0 1 3 4.9l-1.7 3.6H37.7l-1.7-3.6A3.4 3.4 0 0 1 39 21Z" fill="#cf9136" stroke="#7d4c17" stroke-width="3.2" stroke-linejoin="round"/>
@@ -54,6 +56,7 @@
     <symbol id="edit-action" viewBox="0 0 24 24"><path d="m5 15-1 5 5-1L20 8l-4-4L5 15Zm9-9 4 4"/></symbol>
     <symbol id="rank" viewBox="0 0 24 24"><path d="M4 20V11m5.5 9V5M15 20v-6m5.5 6V8"/><path d="M2.5 20h19"/></symbol>
     <symbol id="calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h2m4 0h2m-8 3h2"/></symbol>
+    <symbol id="chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   </svg>
   <svg class="tooltip-board-definitions" aria-hidden="true">
     <defs>
@@ -98,19 +101,21 @@
       <div class="camera-stage">
         <div class="scene" id="scene">
           <img class="scene-image" id="scene-image" src="./assets/peach-valley-farm.webp" width="1672" height="941" alt="山谷里，溪流穿过木桥，农田坐落在泉水和木屋之间。">
-          <div class="plots" id="plots" role="group" aria-label="农田"></div>
-          <div class="orbs" id="orbs" role="group" aria-label="家门口的待收生命力"></div>
-          <div class="experiment-dog" id="experiment-dog" role="img" tabindex="0" aria-label="穿粉色背心的小白狗" aria-haspopup="menu" aria-controls="dog-menu" hidden>
-            <svg class="experiment-dog-filter" aria-hidden="true">
-              <filter id="experiment-dog-color" color-interpolation-filters="sRGB">
-                <feColorMatrix type="matrix" values="
-                   1.04 -0.90  0.90  0  0
-                  -0.17  1.38 -0.17  0  0
-                   0.10  0.98 -0.04  0  0
-                   0     0     0     1  0"/>
-              </filter>
-            </svg>
+          <div class="farm-layer">
+            <div class="plots" id="plots" role="group" aria-label="农田"></div>
+            <div class="experiment-dog" id="experiment-dog" role="img" tabindex="0" aria-label="穿粉色背心的小白狗" aria-haspopup="menu" aria-controls="dog-menu" hidden>
+              <svg class="experiment-dog-filter" aria-hidden="true">
+                <filter id="experiment-dog-color" color-interpolation-filters="sRGB">
+                  <feColorMatrix type="matrix" values="
+                     1.04 -0.90  0.90  0  0
+                    -0.17  1.38 -0.17  0  0
+                     0.10  0.98 -0.04  0  0
+                     0     0     0     1  0"/>
+                </filter>
+              </svg>
+            </div>
           </div>
+          <div class="orbs" id="orbs" role="group" aria-label="家门口的待收生命力"></div>
           <button class="cabin" id="cabin" type="button" aria-label="打开木屋里的今日行动"></button>
         </div>
       </div>
@@ -499,14 +504,14 @@
       <section class="leaderboard-board" id="leaderboard-action-board" aria-labelledby="leaderboard-action-title">
         <div class="leaderboard-heading">
           <h3 id="leaderboard-action-title">行动 · 累计生命力</h3>
-          <span class="leaderboard-note">不计日常与周常</span>
+          <span class="leaderboard-note">不计日常与周常 · 点击展开</span>
         </div>
         <ol id="leaderboard-actions" class="leaderboard-list"></ol>
       </section>
       <section class="leaderboard-board" id="leaderboard-day-board" aria-labelledby="leaderboard-day-title" hidden>
         <div class="leaderboard-heading">
           <h3 id="leaderboard-day-title">单日 · 生命力</h3>
-          <span class="leaderboard-note">不计周常达标</span>
+          <span class="leaderboard-note">不计周常达标 · 点击展开</span>
         </div>
         <ol id="leaderboard-days" class="leaderboard-list"></ol>
       </section>
@@ -534,6 +539,22 @@
     </form>
     <p class="guide" id="action-category-status" role="status"></p>
   </dialog>
+  <dialog id="workout-dialog" aria-labelledby="workout-title">
+    <div class="dialog-heading">
+      <h2 id="workout-title">小健身记录</h2>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭训练记录"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <p class="guide" id="workout-date"></p>
+    <form class="action-editor-form" id="workout-form">
+      <p class="guide">填写本次训练次数，没做的项目可留空。</p>
+      <div class="workout-fields" id="workout-fields"></div>
+      <p class="guide" id="workout-status" role="status"></p>
+      <div class="action-editor-buttons">
+        <button class="action-delete" id="workout-undo" type="button" hidden>取消当天完成</button>
+        <button class="primary" id="workout-save" type="submit">保存并完成</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="action-editor" aria-labelledby="action-editor-title">
     <div class="dialog-heading">
       <h2 id="action-editor-title">新增行动</h2>
@@ -543,7 +564,7 @@
       <label for="action-name">行动名称</label>
       <input id="action-name" maxlength="40" required autofocus>
       <label for="action-description">具体做法（选填）</label>
-      <textarea id="action-description" maxlength="140" rows="2"></textarea>
+      <textarea id="action-description" maxlength="140" rows="5"></textarea>
       <div class="action-field-row">
         <div>
           <label for="action-category">行动分类</label>

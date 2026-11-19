@@ -198,7 +198,7 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
   position: absolute;
   left: var(--dog-x);
   top: var(--dog-y);
-  z-index: 2;
+  z-index: 1;
   width: calc(min(9.45cqw, 16.8cqh) * var(--dog-scale, 1));
   aspect-ratio: 1;
   pointer-events: none;
@@ -224,6 +224,7 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
   /* 只有狗身子的范围可以命中，因此光标与右键只在这块区域生效。 */
   pointer-events: auto;
   cursor: var(--dog-pointer) 14 17, pointer;
+  touch-action: none;
 }
 .experiment-dog:focus-visible { outline: none; }
 .experiment-dog:focus-visible::after { outline: 2px dashed #6f8f2d; outline-offset: 2px; }
@@ -235,8 +236,15 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
   transform: translate(-50%, -87%) scaleX(-1);
   background: url("./assets/experiment-dog-actions.webp") var(--dog-action-frame, 0% 0%) / 400% 200% no-repeat;
 }
-.plots, .orbs { position: absolute; inset: 0; pointer-events: none; }
-.plots { z-index: 1; }
+.experiment-dog.is-held::after {
+  transform: translate(-50%, -100%) scaleX(-1);
+  background: url("./assets/experiment-dog.webp") 0% 100% / 400% 300% no-repeat;
+}
+.experiment-dog.is-held::before { opacity: .45; }
+body.is-dragging-dog, body.is-dragging-dog * { cursor: grabbing !important; user-select: none; }
+body.is-dragging-dog .tool-cursor { visibility: hidden; }
+.farm-layer, .plots, .orbs { position: absolute; inset: 0; pointer-events: none; }
+.farm-layer { z-index: 1; }
 .plots::before {
   content: "";
   position: absolute;
@@ -255,7 +263,7 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
 .plot.locked:has(.expansion-sign):is(:hover, :focus-visible) .tile-face { background: #fff2a333; }
 .expansion-sign {
   position: absolute;
-  z-index: 1;
+  z-index: var(--plot-depth, 1);
   left: var(--root-x);
   bottom: calc(100% - var(--root-y) + 8px);
   display: grid;
@@ -278,7 +286,7 @@ body:has(dialog[open]) .tool-cursor { visibility: hidden; }
 .expansion-sign small { font-size: clamp(10px, 1.05vw, 16px); font-weight: 800; }
 .plot:focus-visible .expansion-sign { outline: 2px solid #fff4b0; outline-offset: 3px; }
 .plot.planted::after { content: ""; position: absolute; left: var(--root-x); top: var(--root-y); width: calc(var(--plant-width) * .69); height: calc(var(--plant-width) * .34); transform: translate(-50%, -50%); border-radius: 50%; background: #69471d68; pointer-events: none; }
-.plot.planted img { position: absolute; z-index: 1; left: var(--root-x); bottom: calc(100% - var(--root-y)); translate: -50% 0; width: var(--plant-width); height: var(--plant-height); display: block; object-fit: contain; object-position: center bottom; pointer-events: auto; }
+.plot.planted img { position: absolute; z-index: var(--plot-depth, 2); left: var(--root-x); bottom: calc(100% - var(--root-y)); translate: -50% 0; width: var(--plant-width); height: var(--plant-height); display: block; object-fit: contain; object-position: center bottom; pointer-events: auto; }
 .plot[data-species="carrot"][data-stage="成熟期"] img {
   /* Only the leaves and the root shoulder are above the soil. */
   width: calc(var(--plant-width) * .82);
@@ -1124,14 +1132,9 @@ dialog button:focus-visible { outline-color: #55713b; }
 .action-categories button:focus-visible { outline-offset: -3px; }
 .action-categories button:hover, #actions .action-toolbar button:hover { filter: brightness(1.07); }
 .action-categories button[aria-pressed="true"], #actions .action-edit-toggle[aria-pressed="true"] { color: #fffce4; border-color: #78941a; background: linear-gradient(#9ab91e, #658609); box-shadow: inset 0 0 0 1.5px #b3ce51, 0 1px #58720b; }
-.action-category-icon { flex: none; width: 2.65cqw; }
+.action-category-icon { display: block; flex: none; width: 2.65cqw; aspect-ratio: 1; }
+.action-category-icon > img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .action-category-icon > svg { display: block; width: 100%; height: auto; aspect-ratio: 1; stroke-width: 1.9; }
-.action-art.action-category-icon { --art-x: 428; --art-y: 319; --art-w: 37; --art-h: 35; mix-blend-mode: multiply; filter: brightness(1.09); }
-[data-category="work"] > .action-category-icon { --art-x: 565; }
-[data-category="exercise"] > .action-category-icon { --art-x: 701; }
-[data-category="music"] > .action-category-icon { --art-x: 838; }
-:is([data-category="other"], [data-category^="custom-"]) > .action-category-icon { --art-x: 975; }
-[aria-pressed="true"] > .action-art.action-category-icon { filter: grayscale(1) invert(1) contrast(4); mix-blend-mode: screen; }
 .action-list { display: grid; margin: 1.7cqw 0 1.45cqw; }
 .action-list > * { grid-area: 1 / 1; }
 .habits {
@@ -1161,19 +1164,15 @@ dialog button:focus-visible { outline-color: #55713b; }
 .action-row .habit { min-height: 0; gap: 1.3cqw; grid-template-columns: auto auto minmax(0, 1fr) auto; padding: .5cqw 2.35cqw; border: 0; border-radius: 0; background: transparent; }
 .action-row .habit:hover { background: #fff4c34d; }
 .action-row .habit:focus-visible, .action-edit:focus-visible { outline-offset: -3px; }
-.habit-art { --art-x: 157; --art-y: 883; --art-w: 94; --art-h: 90; width: clamp(29px, 7.15cqw, 65px); border-radius: 20%; }
-.habit-art[data-art="study"] { --art-y: 417; }
-.habit-art[data-art="work"] { --art-y: 534; }
-.habit-art[data-art="exercise"] { --art-y: 651; }
-.habit-art[data-art="music"] { --art-y: 766; }
-.habit-art.habit-art-drawn { background: none; }
-.habit-art.habit-art-drawn > svg { display: block; width: 100%; height: 100%; }
+.habit-art { display: block; width: clamp(29px, 7.15cqw, 65px); aspect-ratio: 1; }
+.habit-art > img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .habit-category { min-width: 6.35cqw; padding: .18em .55em; border: 1px solid #e3ad6d; border-radius: 1cqw; background: #f7d499; color: #654016; font-size: clamp(9px, 1.64cqw, 15px); font-weight: 800; text-align: center; white-space: nowrap; }
 .habit-category[data-category^="custom-"] { max-width: 10em; overflow: hidden; text-overflow: ellipsis; }
 .habit-category[data-category="study"] { background: #d6cdef; border-color: #afa0dc; color: #544374; }
 .habit-category[data-category="exercise"] { background: #d4e58e; border-color: #adc94d; color: #3d5715; }
 .habit-category[data-category="music"] { background: #f8c6b5; border-color: #e9a091; color: #803c2a; }
 .habit-category[data-category="finance"] { background: #ffe6a3; border-color: #dfb35a; color: #78500f; }
+.habit-category[data-category="inspiration"] { background: #ffedb2; border-color: #d9b04d; color: #805c14; }
 .habit-title { display: flex; align-items: center; gap: .55cqw; min-width: 0; }
 .habit-title strong { min-width: 0; }
 .habit-repeat { flex: none; padding: .1em .45em; border: 1px solid transparent; border-radius: .85cqw; background: #f7ecd4; color: #8a6b3f; font-size: clamp(8px, 1.5cqw, 14px); font-weight: 800; line-height: 1.5; white-space: nowrap; }
@@ -1184,7 +1183,7 @@ dialog button:focus-visible { outline-color: #55713b; }
 .action-row[data-week="done"] .habit-repeat { border-color: #b8c883; background: #eaf0c6; color: #4c641f; }
 .action-row .habit-copy { gap: .25cqw; overflow-wrap: anywhere; }
 .action-row .habit-copy strong { overflow: hidden; font-size: clamp(11px, 2.33cqw, 21px); line-height: 1.18; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; }
-.action-row .habit-copy small { display: -webkit-box; overflow: hidden; color: #694b28; font-size: clamp(9px, 1.78cqw, 16px); line-height: 1.19; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.action-row .habit-copy small { display: -webkit-box; overflow: hidden; color: #694b28; font-size: clamp(9px, 1.78cqw, 16px); line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .habit-side { display: flex; align-items: center; gap: 2.1cqw; }
 .habit-reward { display: inline-flex; align-items: center; gap: .37em; padding: .35em .65em; border: 1px solid #ecd6a7; border-radius: 1.5cqw; background: #fff3ce; color: #4e5c17; font-size: clamp(10px, 2.2cqw, 19px); font-weight: 850; font-variant-numeric: tabular-nums; }
 /* 周常未达标本周次数时，奖励先锁定：虚线边 + 降饱和，避免像日常那样「勾一次就拿」。 */
@@ -1265,8 +1264,35 @@ dialog button:focus-visible { outline-color: #55713b; }
 .leaderboard-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
 .leaderboard-heading h3 { margin: 0; font-size: clamp(12px, 2.25cqw, 18px); }
 .leaderboard-note { color: #8a6334; font-size: clamp(10px, 1.65cqw, 13px); font-weight: 700; }
-.leaderboard-list { display: grid; align-content: start; gap: .85cqw; height: 43cqw; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #bc945b #f7e6c1; margin: 1.5cqw 0 0; padding: 0 .5cqw .5cqw 0; list-style: none; }
-.leaderboard-row { display: flex; align-items: center; gap: 1.5cqw; min-height: 7.4cqw; padding: .9cqw 1.6cqw; border: 1px solid #dbb47c; border-radius: 1.75cqw; background: linear-gradient(110deg, #fff7e3, #fbe9c6); box-shadow: inset 0 0 0 1px #fff8e4, 0 2px 0 #d6ad7033; font-size: clamp(12px, 2.15cqw, 17px); }
+.leaderboard-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: .85cqw; height: 43cqw; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #bc945b #f7e6c1; margin: 1.5cqw 0 0; padding: 0 .5cqw .5cqw 0; list-style: none; }
+.leaderboard-row { display: grid; min-height: 7.4cqw; border: 1px solid #dbb47c; border-radius: 1.75cqw; background: linear-gradient(110deg, #fff7e3, #fbe9c6); box-shadow: inset 0 0 0 1px #fff8e4, 0 2px 0 #d6ad7033; font-size: clamp(12px, 2.15cqw, 17px); overflow: hidden; }
+.leaderboard-summary { display: flex; align-items: center; gap: 1.5cqw; width: 100%; min-height: 7.4cqw; padding: .9cqw 1.6cqw; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+button.leaderboard-summary { cursor: pointer; }
+button.leaderboard-summary:hover { background: #fff2c94d; }
+.leaderboard-row.is-open .leaderboard-summary { background: #fff2c94d; }
+.leaderboard-summary:focus-visible { outline: 2px solid #b98a3f; outline-offset: -3px; }
+.leaderboard-caret { flex: none; width: 1.35cqw; height: 1.35cqw; min-width: 8px; min-height: 8px; margin-right: .3cqw; border-right: 2px solid #9a7440; border-bottom: 2px solid #9a7440; transform: rotate(45deg) translate(-25%, -25%); transition: transform .18s ease; }
+.leaderboard-row.is-open .leaderboard-caret { transform: rotate(-135deg) translate(-25%, -25%); }
+.leaderboard-detail { margin: 0 1.6cqw; padding: .9cqw 0 1.1cqw; border-top: 1px dashed #e2c393; }
+.leaderboard-detail[hidden] { display: none; }
+.leaderboard-detail-list { display: grid; gap: .45cqw; margin: 0; padding: 0; list-style: none; }
+.leaderboard-detail-row { display: flex; align-items: center; gap: .9cqw; padding: .5cqw 1cqw; border-radius: 1.1cqw; background: #fff8e6a8; font-size: clamp(11px, 1.85cqw, 15px); }
+.leaderboard-detail-dot { flex: none; width: 1.1cqw; height: 1.1cqw; min-width: 7px; min-height: 7px; border-radius: 50%; background: #c9a875; box-shadow: 0 0 0 1px #fffdf3; }
+.leaderboard-detail-row[data-category="study"] .leaderboard-detail-dot { background: #9c8cd0; }
+.leaderboard-detail-row[data-category="work"] .leaderboard-detail-dot { background: #a9873f; }
+.leaderboard-detail-row[data-category="exercise"] .leaderboard-detail-dot { background: #8aa73d; }
+.leaderboard-detail-row[data-category="music"] .leaderboard-detail-dot { background: #d98a70; }
+.leaderboard-detail-row[data-category="finance"] .leaderboard-detail-dot { background: #d8a53c; }
+.leaderboard-detail-row[data-category="inspiration"] .leaderboard-detail-dot { background: #e2b440; }
+.leaderboard-detail-name { flex: 1; min-width: 0; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard-detail-note { flex: none; color: #8a6334; font-size: .82em; font-weight: 700; white-space: nowrap; }
+.leaderboard-detail-points { flex: none; min-width: 3.6cqw; color: #4c6a24; font-weight: 850; font-variant-numeric: tabular-nums; text-align: right; }
+.leaderboard-detail-footnote { padding: .25cqw .4cqw 0; color: #8a6334; font-size: clamp(9px, 1.55cqw, 13px); font-weight: 700; }
+.leaderboard-detail-empty { padding: .8cqw; color: #8a6334; font-size: clamp(10px, 1.7cqw, 14px); font-weight: 650; }
+.leaderboard-praise { display: grid; gap: .45cqw; }
+.leaderboard-praise-label { color: #8a6334; font-size: clamp(9px, 1.5cqw, 12px); font-weight: 800; letter-spacing: .05em; }
+.leaderboard-praise-text { margin: 0; padding: .75cqw 1.1cqw; border-radius: 1.1cqw; background: #fff8e6a8; color: #5a3f1d; font-size: clamp(11px, 1.9cqw, 15px); line-height: 1.72; white-space: pre-wrap; overflow-wrap: anywhere; }
+.leaderboard-praise-text.is-empty { color: #8a6334; font-weight: 650; }
 .leaderboard-row[data-rank="1"] { border-color: #d9b356; background: linear-gradient(#fffbe2, #f7e7b0); }
 .leaderboard-row[data-rank="2"] { border-color: #cdc7b6; background: linear-gradient(#fffdf4, #f1ecdf); }
 .leaderboard-row[data-rank="3"] { border-color: #d8b48f; background: linear-gradient(#fff7ea, #f4e3ce); }
@@ -1301,6 +1327,12 @@ dialog button:focus-visible { outline-color: #55713b; }
 .action-editor-form label { font-weight: 700; }
 .action-editor-form input, .action-editor-form textarea, .action-editor-form select { width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid #cba777; border-radius: 7px; background: #fff9e9; color: inherit; font: inherit; }
 .action-editor-form textarea { resize: vertical; }
+.workout-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.workout-fields label { display: grid; gap: 5px; }
+.workout-field-value { display: flex; align-items: center; gap: 7px; font-weight: 500; }
+#workout-fields input[type="number"] { width: 100%; }
+#workout-date { margin-top: 8px; }
+#workout-status:empty { display: none; }
 .action-editor-form :is(input, textarea) + label { margin-top: 4px; }
 .action-editor-form input[type="number"] { width: 9ch; }
 /* 历史日期编辑时「重复频率」被锁定，用纸色 + 禁用光标让它看起来是只读而不是失效。 */
@@ -1651,12 +1683,12 @@ dialog button:focus-visible { outline-color: #55713b; }
 .warehouse-slot {
   position: relative;
   isolation: isolate;
-  display: grid;
-  place-items: center;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
 }
-.warehouse-slot::before { position: absolute; z-index: -1; inset: auto 5% 6% 5%; height: 16%; border-radius: 50%; background: radial-gradient(ellipse, #7d992e88, #a7c13c48 58%, transparent 72%); content: ""; }
-.warehouse-slot img { width: min(100%, 130px); height: 100%; min-height: 0; object-fit: contain; filter: drop-shadow(0 2px 1px #532f232b); }
+.warehouse-slot::before { position: absolute; z-index: -1; inset: auto 4% 2% 4%; height: 12%; border-radius: 50%; background: radial-gradient(ellipse, #7d992e88, #a7c13c48 58%, transparent 72%); content: ""; }
+.warehouse-slot img { position: absolute; inset: 3% 2% 7%; width: 96%; height: 90%; object-fit: contain; object-position: center bottom; filter: drop-shadow(0 2px 1px #532f232b); }
 .warehouse-quantity { padding: 2px 6px; border-radius: 10px; background: #efd3a0; color: #6e421c; font-size: 12px; font-variant-numeric: tabular-nums; }
 .warehouse-price { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; color: #75401b; font-size: 12px; }
 .warehouse-price strong { font-size: 16px; }

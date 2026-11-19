@@ -12,7 +12,7 @@ const defaultHabits = {
 const initialHabits = () => Object.entries(defaultHabits).map(([id, { name, description }]) => ({ id, name, description }));
 const defaultActionCategories = new Map([
   ["all", "全部"], ["study", "学习"], ["work", "工作"],
-  ["exercise", "锻炼"], ["music", "音乐"], ["finance", "理财"], ["other", "其它"],
+  ["exercise", "锻炼"], ["music", "音乐"], ["inspiration", "灵感"], ["friends", "友人"], ["finance", "理财"], ["other", "其它"],
 ]);
 const legacyDailyActionGoal = 5;
 const dailyActionBonus = "daily-action-bonus";
@@ -116,7 +116,7 @@ const plants = new Map([
   ["carrot", { ...plantTiers.get(1), name: "胡萝卜", category: "vegetable", sprite: "./assets/carrot.webp", height: 116 }],
   ["broccoli", { ...plantTiers.get(10), name: "西兰花", category: "vegetable", sprite: "./assets/broccoli.webp", height: 102 }],
   ["cabbage", { ...plantTiers.get(10), name: "包菜", category: "vegetable", sprite: "./assets/cabbage.webp", height: 90 }],
-  ["lucky-clover", { ...plantTiers.get(10), ...plantPlaceholder, name: "幸运草" }],
+  ["lucky-clover", { ...plantTiers.get(10), name: "幸运草", sprite: "./assets/lucky-clover.webp", height: 72 }],
   ["watermelon", { ...plantTiers.get(20), name: "西瓜", category: "fruit", sprite: "./assets/watermelon.webp", height: 95 }],
   ["cantaloupe", { ...plantTiers.get(20), ...plantPlaceholder, name: "哈密瓜", category: "fruit" }],
   ["sunflower", { ...plantTiers.get(30), name: "向日葵", category: "flower", sprite: "./assets/sunflower.webp", height: 122 }],
@@ -124,18 +124,19 @@ const plants = new Map([
   ["corn", { ...plantTiers.get(40), name: "玉米", category: "grain", sprite: "./assets/corn.webp", height: 164 }],
   ["pink-rose", { ...plantTiers.get(40), ...plantPlaceholder, name: "粉玫瑰", category: "flower" }],
   ["banana", { ...plantTiers.get(50), name: "香蕉树", category: "fruit", sprite: "./assets/banana-original-two-bunches.webp", height: 170 }],
-  ["mock-orange", { ...plantTiers.get(50), ...plantPlaceholder, name: "山梅花", category: "flower" }],
+  ["mock-orange", { ...plantTiers.get(50), name: "山梅花", category: "flower", sprite: "./assets/mock-orange.webp", height: 113 }],
   ["orange", { ...plantTiers.get(55), name: "橘子树", category: "fruit", sprite: "./assets/orange.webp", height: 155 }],
-  ["sundae-tree", { ...plantTiers.get(55), ...plantPlaceholder, name: "圣代树" }],
-  ["white-birch", { ...plantTiers.get(60), ...plantPlaceholder, name: "白桦" }],
+  ["sundae-tree", { ...plantTiers.get(55), name: "圣代树", sprite: "./assets/sundae-tree.webp", height: 153 }],
+  ["white-birch", { ...plantTiers.get(60), name: "白桦", sprite: "./assets/white-birch.webp", height: 160 }],
   ["osmanthus", { ...plantTiers.get(65), ...plantPlaceholder, name: "桂花", category: "flower" }],
-  ["willow", { ...plantTiers.get(65), ...plantPlaceholder, name: "柳树" }],
-  ["ginkgo", { ...plantTiers.get(70), ...plantPlaceholder, name: "银杏" }],
+  ["willow", { ...plantTiers.get(65), name: "柳树", sprite: "./assets/willow.webp", height: 158 }],
+  ["ginkgo", { ...plantTiers.get(70), name: "银杏", sprite: "./assets/ginkgo.webp", height: 158 }],
   ["cherry", { ...plantTiers.get(75), name: "樱花树", category: "flower", sprite: "./assets/cherry.webp", height: 155 }],
-  ["plum-blossom", { ...plantTiers.get(80), ...plantPlaceholder, name: "梅花", category: "flower" }],
+  ["plum-blossom", { ...plantTiers.get(80), name: "梅花", category: "flower", sprite: "./assets/plum-blossom.webp", height: 152 }],
   ["pear-treehouse", { ...plantTiers.get(85), ...plantPlaceholder, name: "梨子树屋", category: "fruit" }],
   ["rainbow-eucalyptus", { ...plantTiers.get(85), ...plantPlaceholder, name: "彩虹桉" }],
-  ["golden-trumpet-tree", { ...plantTiers.get(90), ...plantPlaceholder, name: "黄花风铃木", category: "flower" }],
+  ["wish-tree", { ...plantTiers.get(85), name: "祈愿树", sprite: "./assets/wish-tree.webp", height: 163 }],
+  ["golden-trumpet-tree", { ...plantTiers.get(90), name: "黄花风铃木", category: "flower", sprite: "./assets/golden-trumpet-tree.webp", height: 160 }],
   ["moon-gourd", {
     ...abstractPlantTier,
     name: "奶娃金葫芦",
@@ -949,6 +950,8 @@ function habitDetailText(habit, day, weekDone = 0) {
     parts.push(viewingPast ? "当天限定" : "仅今天");
   }
   parts.push(actionPraiseLabel(habit.praiseScore), habit.description);
+  const entry = state.entries.find(item => item.kind === habit.id && item.date === day && !item.weekly);
+  parts.push(workoutSummary(entry?.workout));
   return parts.filter(Boolean).join(" · ");
 }
 
@@ -1005,7 +1008,7 @@ function renderActionCalendar() {
   el["action-calendar-month"].textContent = calendarMonthFormat.format(calendarMonth);
   el["action-calendar-next"].disabled = calendarMonth.toISOString().slice(0, 7) >= today.slice(0, 7);
   el["action-calendar-date"].textContent = `${calendarDate.slice(0, 4)}年${formatDate(calendarDate)}`;
-  const completed = new Map(state.entries.filter(entry => entry.date === calendarDate).map(entry => [entry.kind, entry]));
+  const completed = new Map(state.entries.filter(entry => entry.date === calendarDate && !entry.weekly).map(entry => [entry.kind, entry]));
   const calendarHabits = state.habits.filter(habit =>
     actionScheduledOn(habit, calendarDate) || completed.has(habit.id));
   el["action-calendar-count"].textContent = `已完成 ${totals.get(calendarDate) ?? 0} / ${calendarHabits.length}`;
@@ -1017,7 +1020,7 @@ function renderActionCalendar() {
     const button = document.createElement("button");
     button.type = "button";
     const actionable = actionAvailableOn(habit, calendarDate, today);
-    button.disabled = !actionable || (weekMet && !entry);
+    button.disabled = !actionable;
     button.dataset.calendarHabit = habit.id;
     button.setAttribute("aria-pressed", String(Boolean(entry)));
     const name = document.createElement("strong");
@@ -1033,6 +1036,12 @@ function renderActionCalendar() {
             : `+${actionReward(habit)} 标记完成`;
     label.textContent = repeat === "weekly" ? `${status} · ${calendarDate === today ? "本周" : "当周"} ${weekDone}/${habit.weeklyTarget}` : status;
     button.append(name, label);
+    const workout = workoutSummary(entry?.workout);
+    if (workout) {
+      const summary = document.createElement("span");
+      summary.textContent = workout;
+      button.append(summary);
+    }
     button.addEventListener("click", () => toggleActionCompletion(habit.id, calendarDate, el["action-calendar-status"]));
     if (focused?.dataset.calendarHabit === habit.id) nextFocus = button;
     return button;
@@ -1059,7 +1068,7 @@ function leaderboardRows() {
     if (!points) continue;
     const habit = state.habits.find(item => item.id === entry.kind);
     if (habit && habitRepeat(habit) === "once") {
-      const row = actions.get(habit.id) ?? { name: habit.name, points: 0, count: 0 };
+      const row = actions.get(habit.id) ?? { id: habit.id, name: habit.name, points: 0, count: 0 };
       row.points += points;
       row.count += 1;
       actions.set(habit.id, row);
@@ -1075,13 +1084,132 @@ function leaderboardRows() {
     days: [...days].map(([date, row]) => ({ date, ...row })).sort((a, b) =>
       b.points - a.points || (a.date < b.date ? 1 : -1)),
     praise: state.habits.filter(habit => actionPraiseLabel(habit.praiseScore))
-      .map(habit => ({ name: habit.name, points: habit.praiseScore }))
+      .map(habit => ({
+        id: habit.id,
+        name: habit.name,
+        points: habit.praiseScore,
+        description: (habit.description ?? "").trim(),
+      }))
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "zh")),
   };
 }
 
 const weekdayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 let leaderboardDimension = "actions";
+// 展开状态按维度各记一个，换到另一个榜单再换回来时还能停在原来那一行。
+const leaderboardExpanded = new Map();
+
+function weekdayOf(date) {
+  return weekdayNames[new Date(`${date}T12:00:00`).getDay()];
+}
+
+function leaderboardDetailNode(rows, footnotes = [], emptyText = "这一天没有获得生命力的行动。") {
+  const list = document.createElement("ul");
+  list.className = "leaderboard-detail-list";
+  if (!rows.length) {
+    const empty = document.createElement("li");
+    empty.className = "leaderboard-detail-empty";
+    empty.textContent = emptyText;
+    list.append(empty);
+  }
+  for (const row of rows) {
+    const item = document.createElement("li");
+    item.className = "leaderboard-detail-row";
+    if (row.category) item.dataset.category = row.category;
+    const dot = document.createElement("i");
+    dot.className = "leaderboard-detail-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const name = document.createElement("span");
+    name.className = "leaderboard-detail-name";
+    name.textContent = row.name;
+    if (row.title) name.title = row.title;
+    item.append(dot, name);
+    if (row.note) {
+      const note = document.createElement("small");
+      note.className = "leaderboard-detail-note";
+      note.textContent = row.note;
+      item.append(note);
+    }
+    const points = document.createElement("span");
+    points.className = "leaderboard-detail-points";
+    points.textContent = `+${row.points}`;
+    item.append(points);
+    list.append(item);
+  }
+  for (const text of footnotes) {
+    const item = document.createElement("li");
+    item.className = "leaderboard-detail-footnote";
+    item.textContent = text;
+    list.append(item);
+  }
+  return list;
+}
+
+// 单日明细：这一天具体做了哪几项、各拿多少生命力。
+// 周常打卡不带生命力，单独数一笔放在脚注里，免得明细加不出行首的总分。
+function dayLeaderboardDetail(date) {
+  const rows = [];
+  let weeklyMarks = 0;
+  let weeklyBonus = 0;
+  for (const entry of state.entries) {
+    if (entry.date !== date || entry.kind === "sample") continue;
+    if (entry.weekly) {
+      weeklyBonus += actionReward(entry);
+      continue;
+    }
+    if (entry.weeklyMark) {
+      weeklyMarks += 1;
+      continue;
+    }
+    const points = actionReward(entry);
+    if (!points) continue;
+    const habit = state.habits.find(item => item.id === entry.kind);
+    rows.push({
+      name: habit?.name ?? actionRecordLabel(entry).split(" · ")[0],
+      category: habit ? habitCategory(habit) : "other",
+      note: habit ? repeatLabel(habit) : "行动已删除",
+      points,
+    });
+  }
+  rows.sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "zh"));
+  const footnotes = [];
+  if (weeklyMarks) footnotes.push(`另有 ${weeklyMarks} 次周常打卡，不计生命力`);
+  if (weeklyBonus) footnotes.push(`周常达标奖励 +${weeklyBonus}，不计入本榜`);
+  return leaderboardDetailNode(rows, footnotes);
+}
+
+// 行动明细：这项日抛行动每次完成是在哪天、各拿多少生命力。
+function actionLeaderboardDetail(habitId) {
+  const rows = state.entries
+    .filter(entry => entry.kind === habitId && entry.date && !entry.weekly && !entry.weeklyMark)
+    .filter(entry => actionReward(entry) > 0)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .map(entry => ({
+      name: formatDate(entry.date),
+      note: `${weekdayOf(entry.date)}${entry.source === "finance-link" ? " · 自动" : ""}`,
+      points: actionReward(entry),
+    }));
+  return leaderboardDetailNode(rows, [], "这项行动还没有记录。");
+}
+
+// 赞美榜明细不是打卡记录，而是这项行动自己写的「具体做法」。
+function praiseLeaderboardDetail(description) {
+  const wrap = document.createElement("div");
+  wrap.className = "leaderboard-praise";
+  const label = document.createElement("span");
+  label.className = "leaderboard-praise-label";
+  label.textContent = "具体做法";
+  const text = document.createElement("p");
+  text.className = "leaderboard-praise-text";
+  if (description) {
+    text.textContent = description;
+  } else {
+    text.classList.add("is-empty");
+    text.textContent = "还没填写具体做法，在行动编辑里补上就能在这里展开。";
+  }
+  wrap.append(label, text);
+  return wrap;
+}
 
 function renderLeaderboard() {
   const { actions, days, praise } = leaderboardRows();
@@ -1090,7 +1218,7 @@ function renderLeaderboard() {
     tab.setAttribute("aria-pressed", String(active));
     el[tab.getAttribute("aria-controls")].hidden = !active;
   }
-  const fill = (list, rows, emptyText) => {
+  const fill = (list, rows, emptyText, dimension) => {
     if (!rows.length) {
       const empty = document.createElement("li");
       empty.className = "leaderboard-empty";
@@ -1098,10 +1226,19 @@ function renderLeaderboard() {
       list.replaceChildren(empty);
       return;
     }
+    const openKey = leaderboardExpanded.get(dimension);
     list.replaceChildren(...rows.map((row, index) => {
       const item = document.createElement("li");
       item.className = "leaderboard-row";
       item.dataset.rank = String(index + 1);
+      // 有明细的行改成按钮，点一下在行下方铺开具体行动。
+      const head = document.createElement(row.detail ? "button" : "div");
+      head.className = "leaderboard-summary";
+      if (row.detail) {
+        head.type = "button";
+        head.dataset.rowKey = row.key;
+        head.classList.add("is-expandable");
+      }
       const rank = document.createElement("span");
       rank.className = "leaderboard-rank";
       rank.textContent = String(index + 1);
@@ -1115,21 +1252,51 @@ function renderLeaderboard() {
       const points = document.createElement("span");
       points.className = "leaderboard-points";
       points.textContent = row.score ? `${row.points} 分` : `+${row.points}`;
-      item.append(rank, copy, points);
+      head.append(rank, copy, points);
+      if (!row.detail) {
+        item.append(head);
+        return item;
+      }
+      const caret = document.createElement("i");
+      caret.className = "leaderboard-caret";
+      caret.setAttribute("aria-hidden", "true");
+      head.append(caret);
+      const detail = document.createElement("div");
+      detail.className = "leaderboard-detail";
+      detail.id = `leaderboard-detail-${dimension}-${index}`;
+      detail.hidden = openKey !== row.key;
+      detail.append(row.detail());
+      head.setAttribute("aria-controls", detail.id);
+      head.setAttribute("aria-expanded", String(!detail.hidden));
+      head.setAttribute("aria-label", `${row.title}，${row.caption}，${detail.hidden ? "展开" : "收起"}${row.detailLabel ?? "明细"}`);
+      item.classList.toggle("is-open", !detail.hidden);
+      head.addEventListener("click", () => {
+        const open = leaderboardExpanded.get(dimension) === row.key;
+        leaderboardExpanded.set(dimension, open ? null : row.key);
+        renderLeaderboard();
+        const target = [...list.querySelectorAll("[data-row-key]")].find(button => button.dataset.rowKey === row.key);
+        if (!target) return;
+        target.focus({ preventScroll: true });
+        if (!open) target.closest(".leaderboard-row")?.scrollIntoView({ block: "nearest" });
+      });
+      item.append(head, detail);
       return item;
     }));
   };
   fill(el["leaderboard-actions"], actions.map(row => ({
     title: row.name, caption: `${row.count} 次`, points: row.points,
-  })), "还没有日抛行动的生命力记录。");
+    key: row.id, detail: () => actionLeaderboardDetail(row.id),
+  })), "还没有日抛行动的生命力记录。", "actions");
   fill(el["leaderboard-days"], days.slice(0, 10).map(row => ({
     title: `${row.date.slice(0, 4)}年${formatDate(row.date)}`,
-    caption: `${weekdayNames[new Date(`${row.date}T12:00:00`).getDay()]} · ${row.count} 项行动`,
+    caption: `${weekdayOf(row.date)} · ${row.count} 项行动`,
     points: row.points,
-  })), "还没有可排行的日子。");
+    key: row.date, detail: () => dayLeaderboardDetail(row.date),
+  })), "还没有可排行的日子。", "days");
   fill(el["leaderboard-praise"], praise.map(row => ({
-    title: row.name, caption: actionPraiseLabel(row.points), points: row.points, score: true,
-  })), "在行动编辑中填写赞美指数，即可加入榜单。");
+    title: row.name, caption: actionPraiseLabel(row.points).split(" · ")[0], points: row.points, score: true,
+    key: row.id, detailLabel: "具体做法", detail: () => praiseLeaderboardDetail(row.description),
+  })), "在行动编辑中填写赞美指数，即可加入榜单。", "praise");
   el["leaderboard-status"].textContent = leaderboardDimension === "days" && days.length > 10
     ? `单日榜只显示前 10 天，共 ${days.length} 天有记录。`
     : "";
@@ -1288,13 +1455,14 @@ function habitCategory(habit) {
   return category !== "all" && actionCategories.has(category) ? category : "other";
 }
 
-// 左侧图案跟着维度走：有手绘贴图的用精灵图，理财与「注意」用自带配色的矢量图标。
-function habitArtName(habit, category) {
-  const label = actionCategories.get(category);
-  if (label === "理财") return "art-finance";
-  if (label === "注意") return "art-warning";
-  if (category === "other") return { study: "study", move: "exercise" }[habit.id] ?? "other";
-  return category;
+function actionCategoryArtwork(category) {
+  const label = actionCategories.get(category)?.trim();
+  const artwork = { 全部: "all", 学习: "study", 工作: "work", 锻炼: "exercise", 音乐: "music", 灵感: "inspiration", 友人: "friends", 理财: "finance", 摄影: "photography", 注意: "warning" }[label] ?? "other";
+  const image = document.createElement("img");
+  image.src = forestAssetUrl(`./assets/action-icons/${artwork}.webp`);
+  image.alt = "";
+  image.width = image.height = 64;
+  return image;
 }
 
 function actionCategoryLabel(label) {
@@ -1336,11 +1504,7 @@ function renderActionCategories() {
     const artwork = document.createElement("i");
     artwork.className = "action-category-icon";
     artwork.setAttribute("aria-hidden", "true");
-    if (category === "all") artwork.innerHTML = icon("action-grid");
-    else if (category === "finance") artwork.innerHTML = icon("action-money");
-    else if (label.trim() === "摄影") artwork.innerHTML = icon("action-camera");
-    else if (label === "注意") artwork.innerHTML = icon("action-warning");
-    else artwork.classList.add("action-art");
+    artwork.append(actionCategoryArtwork(category));
     const name = document.createElement("span");
     name.textContent = label;
     tab.append(artwork, name);
@@ -1379,7 +1543,12 @@ function actionPraiseLabel(score) {
 function renderHabits(day = todayKey()) {
   habitButtons.clear();
   el.habits.replaceChildren();
-  for (const habit of state.habits) {
+  const repeatOrder = { once: 0, daily: 1, weekly: 2 };
+  const categoryOrder = new Map(actionCategoryOrder(actionCategories).map(([category], index) => [category, index]));
+  const habits = [...state.habits].sort((left, right) =>
+    repeatOrder[habitRepeat(left)] - repeatOrder[habitRepeat(right)] ||
+    categoryOrder.get(habitCategory(left)) - categoryOrder.get(habitCategory(right)));
+  for (const habit of habits) {
     if (!actionScheduledOn(habit, day)) continue;
     const category = habitCategory(habit);
     const row = document.createElement("div");
@@ -1390,15 +1559,8 @@ function renderHabits(day = todayKey()) {
     button.className = "habit";
     button.dataset.kind = habit.id;
     const artwork = document.createElement("span");
-    artwork.className = "action-art habit-art";
-    const art = habitArtName(habit, category);
-    if (art.startsWith("art-")) {
-      // 精灵图里没有「理财」「注意」这两类，用自带配色的矢量图标代替。
-      artwork.classList.add("habit-art-drawn");
-      artwork.innerHTML = icon(art);
-    } else {
-      artwork.dataset.art = art;
-    }
+    artwork.className = "habit-art";
+    artwork.append(actionCategoryArtwork(category));
     artwork.setAttribute("aria-hidden", "true");
     const chip = document.createElement("span");
     chip.className = "habit-category";
@@ -1420,7 +1582,7 @@ function renderHabits(day = todayKey()) {
     copy.append(title);
     const detail = habitDetailText(habit, day, repeat === "weekly" ? weeklyDone(habit, day) : 0);
     let description;
-    if (detail) {
+    if (detail || isWorkoutHabit(habit)) {
       description = document.createElement("small");
       description.textContent = detail;
       description.title = detail;
@@ -1740,7 +1902,7 @@ function updateControls() {
   displayedDay = day;
   renderedToday = today;
   updatePlayer();
-  const completed = new Map(state.entries.filter(entry => entry.date === day).map(entry => [entry.kind, entry]));
+  const completed = new Map(state.entries.filter(entry => entry.date === day && !entry.weekly).map(entry => [entry.kind, entry]));
   let completedCount = 0;
   let goal = 0;
   let earnableReward = 0;
@@ -1769,7 +1931,7 @@ function updateControls() {
       if (done) completedCount++;
       else earnableReward += reward;
     }
-    if (description && repeat === "weekly") {
+    if (description && (repeat === "weekly" || isWorkoutHabit(habit))) {
       const text = habitDetailText(habit, day, weekProgress);
       description.textContent = text;
       description.title = text;
@@ -1784,9 +1946,12 @@ function updateControls() {
       weekMet ? "本周已达标" : repeat === "weekly" ? `达标后一次性获得 ${reward} 点生命力` : "",
       actionPraiseLabel(habit.praiseScore),
       habit.description,
+      workoutSummary(entry?.workout),
       repeat === "weekly" ? "" : `${reward} 点生命力`,
     ].filter(Boolean).join("，"));
-    button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成" : done ? "取消完成" : weekMet ? "本周已达标，下周继续" : "标记完成";
+    button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成"
+      : isWorkoutHabit(habit) && (day === today || entry?.workout) ? done ? "查看或修改当天训练记录" : "填写训练记录并完成"
+      : done ? "取消完成" : weekMet ? "继续记录，本周奖励已结算" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
     const rewardBox = rewardAmount.parentElement;
     rewardBox.classList.toggle("is-locked", repeat === "weekly" && !weekMet);
@@ -1966,7 +2131,7 @@ function renderPlots(growingIndex = -1) {
     button.style.setProperty("--tile-outline", `polygon(${corners.map(([x, y]) => `${x}% ${y}%`).join(", ")})`);
     button.style.setProperty("--root-x", `${(rootX - left) / width * 100}%`);
     button.style.setProperty("--root-y", `${(rootY - top) / height * 100}%`);
-    button.style.zIndex = hasSign ? sceneHeight : Math.round(rootY);
+    button.style.setProperty("--plot-depth", hasSign ? sceneHeight : Math.round(rootY));
     const sampleRow = Math.round(row * (paintedRows - 1) / (fieldSize - 1));
     const sampleColumn = Math.round(column * (paintedColumns - 2) / (fieldSize - 1));
     const source = locked ? turfSamples[sampleRow] : tilePoints(paintedField, sampleRow, sampleColumn);
@@ -2053,17 +2218,121 @@ function actionRecordLabel(entry) {
   return entry.actionLabel ?? defaultHabits[entry.kind]?.description ?? "示例生命力";
 }
 
-function toggleActionCompletion(kind, date = todayKey(), status = el["action-status"]) {
+const workoutExercises = new Map([
+  ["pushups", "俯卧撑"], ["situps", "仰卧起坐"], ["backExtensions", "仰背"],
+  ["dumbbell", "哑铃"], ["pullups", "引体向上"], ["cableAbs", "滑轮练腹"],
+]);
+let workoutContext;
+
+function isWorkoutHabit(habit) {
+  return habit.name.includes("小健身");
+}
+
+function workoutSummary(workout) {
+  if (!workout) return "";
+  return [...workoutExercises].filter(([id]) => workout[id] > 0)
+    .map(([id, label]) => `${label} ${workout[id]} 次`).join(" · ");
+}
+
+for (const [id, name] of workoutExercises) {
+  const label = document.createElement("label");
+  label.htmlFor = `workout-${id}`;
+  label.append(document.createTextNode(name));
+  const value = document.createElement("span");
+  value.className = "workout-field-value";
+  const input = document.createElement("input");
+  input.id = `workout-${id}`;
+  input.name = id;
+  input.type = "number";
+  input.inputMode = "numeric";
+  input.min = "0";
+  input.step = "1";
+  value.append(input, document.createTextNode("次"));
+  label.append(value);
+  el["workout-fields"].append(label);
+}
+
+function openWorkout(habit, date, status, entry) {
+  workoutContext = { kind: habit.id, date, status, saveKey: activeForestSave().key(), entry: JSON.stringify(entry) };
+  el["workout-title"].textContent = `${habit.name} · 训练记录`;
+  el["workout-date"].textContent = `${date} · ${repeatLabel(habit)}`;
+  el["workout-status"].textContent = "";
+  el["workout-save"].textContent = entry ? "保存修改" : "保存并完成";
+  el["workout-undo"].hidden = !entry;
+  for (const [id] of workoutExercises) el["workout-form"].elements.namedItem(id).value = entry?.workout?.[id] ?? "";
+  el["workout-dialog"].showModal();
+}
+
+el["workout-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  if (!el["workout-dialog"].open) return;
+  const context = workoutContext;
+  const habit = state.habits.find(item => item.id === context?.kind);
+  const entry = state.entries.find(item => item.kind === context?.kind && item.date === context?.date && !item.weekly);
+  if (!habit || context.saveKey !== activeForestSave().key() || JSON.stringify(entry) !== context.entry || !actionAvailableOn(habit, context.date, todayKey())) {
+    el["workout-status"].textContent = "行动或记录已变化，请关闭窗口后重新打开。";
+    return;
+  }
+  const workout = {};
+  for (const [id] of workoutExercises) {
+    const input = el["workout-form"].elements.namedItem(id);
+    const value = input.value === "" ? 0 : input.valueAsNumber;
+    if (!Number.isSafeInteger(value) || value < 0) {
+      el["workout-status"].textContent = "次数请填写大于等于 0 的整数。";
+      return;
+    }
+    if (value > 0) workout[id] = value;
+  }
+  if (!Object.keys(workout).length) {
+    el["workout-status"].textContent = "请至少填写一个项目的训练次数。";
+    return;
+  }
+  if (entry) {
+    const previous = entry.workout;
+    entry.workout = workout;
+    if (!saveState()) {
+      if (previous === undefined) delete entry.workout;
+      else entry.workout = previous;
+      el["workout-status"].textContent = "浏览器无法保存训练记录，请重试。";
+      return;
+    }
+    updateControls();
+    context.status.textContent = "当天训练记录已更新。";
+  } else if (!record(habit, context.date, el["workout-status"], workout)) {
+    return;
+  } else {
+    context.status.textContent = el["workout-status"].textContent;
+  }
+  el["workout-dialog"].close();
+});
+
+el["workout-undo"].addEventListener("click", () => {
+  const context = workoutContext;
+  if (!context || context.saveKey !== activeForestSave().key()) return;
+  const entry = state.entries.find(item => item.kind === context.kind && item.date === context.date && !item.weekly);
+  if (JSON.stringify(entry) !== context.entry) {
+    el["workout-status"].textContent = "记录已变化，请关闭窗口后重新打开。";
+    return;
+  }
+  toggleActionCompletion(context.kind, context.date, el["workout-status"], true);
+  const remaining = state.entries.some(entry => entry.kind === context.kind && entry.date === context.date && !entry.weekly);
+  if (!remaining) {
+    context.status.textContent = el["workout-status"].textContent;
+    el["workout-dialog"].close();
+  }
+});
+
+function toggleActionCompletion(kind, date = todayKey(), status = el["action-status"], skipWorkout = false) {
   const day = todayKey();
   if (day !== renderedToday) updateControls();
   const habit = state.habits.find(item => item.id === kind);
   if (!habit || date > day || !actionAvailableOn(habit, date, day)) return;
   const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind && !entry.weekly);
+  if (!skipWorkout && isWorkoutHabit(habit) && (date === day || state.entries[index]?.workout)) {
+    openWorkout(habit, date, status, state.entries[index]);
+    return;
+  }
   if (index < 0) {
-    if (weeklyTargetMet(habit, date)) {
-      status.textContent = `本周 ${habit.weeklyTarget} 次已达标，下周继续。`;
-      return;
-    }
     record(habit, date, status);
     return;
   }
@@ -2074,8 +2343,9 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
     return;
   }
   const spent = spentEnergyIds();
-  // 周常撤回这一次后可能不再达标，本周已发的达标奖励要一起收回。
-  const award = habitRepeat(habit) === "weekly" ? weeklyAwardEntry(habit, date) : undefined;
+  // Only revoke the weekly reward when removing this mark drops progress below the target.
+  const losesWeeklyTarget = habitRepeat(habit) === "weekly" && weeklyDone(habit, date) - 1 < habit.weeklyTarget;
+  const award = losesWeeklyTarget ? weeklyAwardEntry(habit, date) : undefined;
   const awardSpent = award && [...spent].some(id => energyEntryId(id) === award.id);
   if (awardSpent) {
     status.textContent = "本周达标奖励的生命力已花费，撤回这次打卡会不满足达标条件。";
@@ -2118,16 +2388,17 @@ function addActionEntry(habit, date, source, snapshot = state) {
   if (weekly) entry.weeklyMark = true;
   snapshot.entries.push(entry);
   const award = awardWeekly(habit, date, snapshot);
-  return { reward: actionReward(habit), award, weekly };
+  return { reward: actionReward(habit), award, weekly, entry };
 }
 
-function record(habit, date, status) {
+function record(habit, date, status, workout) {
   const previousLength = state.entries.length;
-  const { reward, award, weekly } = addActionEntry(habit, date);
+  const { reward, award, weekly, entry } = addActionEntry(habit, date);
+  if (workout) entry.workout = workout;
   if (!saveState()) {
     state.entries.length = previousLength;
     status.textContent = "浏览器无法保存，标记完成失败。";
-    return;
+    return false;
   }
   renderOrbs();
   updateControls();
@@ -2135,10 +2406,12 @@ function record(habit, date, status) {
     const done = weeklyDone(habit, date);
     status.textContent = award
       ? `本周 ${habit.weeklyTarget} 次达标，${reward} 点生命力可在家门口领取。`
-      : `已记录本周第 ${done} 次，还差 ${habit.weeklyTarget - done} 次达标。`;
-    return;
+      : done >= habit.weeklyTarget ? `已记录本周第 ${done} 次，本周目标已完成。`
+        : `已记录本周第 ${done} 次，还差 ${habit.weeklyTarget - done} 次达标。`;
+    return true;
   }
   status.textContent = `已标记完成，${reward} 点生命力可在家门口领取。`;
+  return true;
 }
 
 function applyFinanceLink({ date, recorded, happy }) {
