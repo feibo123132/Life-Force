@@ -12,7 +12,7 @@ const defaultHabits = {
 const initialHabits = () => Object.entries(defaultHabits).map(([id, { name, description }]) => ({ id, name, description }));
 const defaultActionCategories = new Map([
   ["all", "全部"], ["study", "学习"], ["work", "工作"],
-  ["exercise", "锻炼"], ["music", "音乐"], ["other", "其它"],
+  ["exercise", "锻炼"], ["music", "音乐"], ["finance", "理财"], ["other", "其它"],
 ]);
 const legacyDailyActionGoal = 5;
 const dailyActionBonus = "daily-action-bonus";
@@ -191,6 +191,11 @@ let previewPlot;
 let previewOrb;
 let calendarDate;
 let calendarMonth;
+let calendarLastClick;
+// 行动面板当前查看的日期：未设置即今天。双击日历时可切到历史某天。
+let actionViewDay;
+// 主面板最近一次渲染时的真实今天，用于跨天刷新。
+let renderedToday;
 let inExperiment = false;
 
 function restoreWaitingCrops(save) {
@@ -486,6 +491,18 @@ function pruneActionEntries(entries, habits) {
     (totals.get(entry.date) ?? 0) >= (entry.goal ?? legacyDailyActionGoal));
 }
 
+// 「伊比理财」原来只能挂在「其它」下，新增「理财」分类后把它挪过去；已手动改过的不覆盖。
+function migrateActionCategories(habits) {
+  let changed = false;
+  for (const habit of habits) {
+    if (habit.name?.trim() !== "伊比理财") continue;
+    if (habit.category && habit.category !== "other") continue;
+    habit.category = "finance";
+    changed = true;
+  }
+  return changed;
+}
+
 const forestStorage = {
   getItem: key => localStorage.getItem(key),
   setItem: (key, data) => localStorage.setItem(key, data),
@@ -517,7 +534,12 @@ function readState(save = forestSave) {
     const saved = save.read();
     if (saved && Array.isArray(saved.entries) && Array.isArray(saved.trees)) {
       const habits = (Array.isArray(saved.habits) ? saved.habits : initialHabits()).map(normalizeHabit);
-      const entries = pruneActionEntries(saved.entries, habits);
+      const habitsMigrated = migrateActionCategories(habits);
+      const reclaimed = reclaimWeeklyBugEnergy(pruneActionEntries(saved.entries, habits), habits, saved);
+      const entries = reclaimed.entries;
+      if (habitsMigrated || reclaimed.changed) {
+        try { save.write({ ...saved, habits, entries }); } catch {}
+      }
       const field = migrateField(saved);
       const player = { ...startingState().player, ...saved.player };
       // Scale legacy XP once so the new thresholds preserve existing progress.
@@ -554,6 +576,7 @@ function readState(save = forestSave) {
             typeof category.label === "string" && category.label.trim())
           : [],
         entries,
+        weeklyEnergyReclaimed: reclaimed.amount,
         seedlings: Array.isArray(saved.seedlings) ? saved.seedlings : [],
         fertilizerPurchases: Array.isArray(saved.fertilizerPurchases) ? saved.fertilizerPurchases : [],
         spentPlantEnergyIds: Array.isArray(saved.spentPlantEnergyIds) ? saved.spentPlantEnergyIds : [],
@@ -721,14 +744,22 @@ el.plots.addEventListener("focusout", event => {
 });
 
 function showActions() {
-  if (todayKey() !== displayedDay) updateControls();
+  if (todayKey() !== renderedToday) updateControls();
   setActionEditMode(false);
   el["action-status"].textContent = "";
   el.actions.showModal();
 }
 
+// 行动在某天是否「排了这个班」：日抛行动只在它被创建的那一天出现。
+// 行动面板与行动日历必须共用这一口径，否则日抛行动一过零点就会从日历里消失。
+function actionScheduledOn(habit, date) {
+  return !habit.onlyOn || habit.onlyOn === date;
+}
+
+// 某天还能不能勾选/取消：只要不是未来日期、且这天确实排了这项行动就行。
+// 日抛行动也允许事后补记 —— 漏点不是没做，日期不能倒流但不该阻止如实记录。
 function actionAvailableOn(habit, date, today) {
-  return !habit.onlyOn || (habit.onlyOn === date && date === today);
+  return actionScheduledOn(habit, date) && date <= today;
 }
 
 // daily = 日常行动，weekly = 周常行动（一周内累计达标即算完成），once = 日抛行动（仅当天）。
@@ -759,17 +790,118 @@ function weekEnd(day) {
 function weeklyDone(habit, day, entries = state.entries) {
   const start = weekStart(day);
   const end = weekEnd(day);
-  return entries.filter(entry => entry.kind === habit.id && entry.date >= start && entry.date <= end).length;
+  // 达标奖励也挂在同一个 kind 上，统计次数时必须排除，否则会自己把自己算成一次。
+  return entries.filter(entry => entry.kind === habit.id && !entry.weekly && entry.date >= start && entry.date <= end).length;
 }
 
 function weeklyTargetMet(habit, day, entries = state.entries) {
   return habitRepeat(habit) === "weekly" && weeklyDone(habit, day, entries) >= habit.weeklyTarget;
 }
 
+// —— 周常结算 ——
+// 周常打卡本身不给生命力；一周内凑满目标次数后，一次性发放这项行动的奖励。
+function weeklyAwardId(habit, day) {
+  return `${weekStart(day)}:${habit.id}:weekly`;
+}
+
+// 旧规则下周常「每打卡一次就发一次生命力」，和「每周达标只发一次」冲突。
+// 这里把多发的那部分收回：还挂在门口没领的球整颗作废，已入账但没花掉的扣成「已扣留」，
+// 已经花掉的（变成作物、肥料）不追；每周达标应得的那一份重新补上，避免误伤正常奖励。
+function reclaimWeeklyBugEnergy(entries, habits, snapshot) {
+  if (!Array.isArray(entries)) return { entries, amount: 0, changed: false };
+  const weeklyHabits = habits.filter(habit => habitRepeat(habit) === "weekly" && habit.weeklyTarget > 0);
+  if (!weeklyHabits.length) return { entries, amount: 0, changed: false };
+
+  const next = [...entries];
+  const spentByEntry = countSpentEnergyByEntry(spentEnergyIds({ ...snapshot, entries: next }));
+  let amount = 0;
+  let changed = false;
+
+  for (const habit of weeklyHabits) {
+    const groups = new Map();
+    next.forEach((entry, index) => {
+      if (entry.kind !== habit.id || !entry.date) return;
+      if (entry.weekly || entry.weeklyMark) return;
+      if (!(entry.reward > 0)) return;
+      const start = weekStart(entry.date);
+      if (!groups.has(start)) groups.set(start, []);
+      groups.get(start).push(index);
+    });
+
+    for (const [start, indexes] of groups) {
+      const end = weekEnd(start);
+      const marks = next.filter(entry => entry.kind === habit.id && !entry.weekly
+        && entry.date >= start && entry.date <= end).length;
+      for (const index of indexes) {
+        const entry = next[index];
+        changed = true;
+        if (!entry.collected) {
+          amount += actionReward(entry);
+          next[index] = { ...entry, reward: 0, collected: true, weeklyMark: true };
+          continue;
+        }
+        const available = remainingEntryEnergy(entry, spentByEntry);
+        amount += available;
+        next[index] = {
+          ...entry,
+          weeklyMark: true,
+          withheldEnergy: (entry.withheldEnergy ?? 0) + available,
+        };
+      }
+      if (marks >= habit.weeklyTarget && !next.some(entry => entry.id === weeklyAwardId(habit, start))) {
+        const last = next[indexes[indexes.length - 1]];
+        next.push({
+          id: weeklyAwardId(habit, start),
+          date: last.date,
+          kind: habit.id,
+          actionLabel: `${habit.name} · 本周 ${habit.weeklyTarget} 次达标`,
+          reward: actionReward(habit),
+          collected: true,
+          weekly: true,
+        });
+        changed = true;
+      }
+    }
+  }
+  return { entries: next, amount, changed };
+}
+
+function weeklyAwardEntry(habit, day, entries = state.entries) {
+  const id = weeklyAwardId(habit, day);
+  return entries.find(entry => entry.id === id);
+}
+
+// 本周这一项是否已经结算过：新格式的达标奖励，或旧存档里「每打卡一次就发一次」的记录。
+function weeklyRewardSettled(habit, day, entries = state.entries) {
+  if (weeklyAwardEntry(habit, day, entries)) return true;
+  const start = weekStart(day);
+  const end = weekEnd(day);
+  return entries.some(entry => entry.kind === habit.id && !entry.weeklyMark
+    && entry.reward > 0 && entry.date >= start && entry.date <= end);
+}
+
+function awardWeekly(habit, day, snapshot = state) {
+  if (habitRepeat(habit) !== "weekly") return null;
+  if (!weeklyTargetMet(habit, day, snapshot.entries)) return null;
+  if (weeklyRewardSettled(habit, day, snapshot.entries)) return null;
+  const award = {
+    id: weeklyAwardId(habit, day),
+    date: day,
+    kind: habit.id,
+    actionLabel: `${habit.name} · 本周 ${habit.weeklyTarget} 次达标`,
+    reward: actionReward(habit),
+    collected: false,
+    weekly: true,
+  };
+  snapshot.entries.push(award);
+  return award;
+}
+
 function dailyActionTotals(entries) {
   const totals = new Map();
-  for (const { date, kind } of entries) {
-    if (date && ![dailyActionBonus, whaleMoodBonus, "sample"].includes(kind)) totals.set(date, (totals.get(date) ?? 0) + 1);
+  for (const { date, kind, weekly } of entries) {
+    // 周常的达标奖励不算一次打卡，否则会把这天的「已完成项数」多算一项。
+    if (date && !weekly && ![dailyActionBonus, whaleMoodBonus, "sample"].includes(kind)) totals.set(date, (totals.get(date) ?? 0) + 1);
   }
   return totals;
 }
@@ -787,7 +919,8 @@ function normalizeHabit(habit) {
 function dayEnergyTotals(entries) {
   const totals = new Map();
   for (const entry of entries) {
-    if (!entry.date || entry.kind === "sample") continue;
+    // 周常打卡本身不带生命力（0 分），不该把那天算成一个「有记录的日子」。
+    if (!entry.date || entry.kind === "sample" || !actionReward(entry)) continue;
     totals.set(entry.date, (totals.get(entry.date) ?? 0) + actionReward(entry));
   }
   return totals;
@@ -808,11 +941,12 @@ function actionHistory(entries, day = todayKey()) {
 
 function habitDetailText(habit, day, weekDone = 0) {
   const repeat = habitRepeat(habit);
+  const viewingPast = day !== todayKey();
   const parts = [];
   if (repeat === "weekly") {
-    parts.push(`本周 ${weekDone}/${habit.weeklyTarget}${weekDone >= habit.weeklyTarget ? " · 已达标" : ""}`);
+    parts.push(`${viewingPast ? "当周" : "本周"} ${weekDone}/${habit.weeklyTarget}${weekDone >= habit.weeklyTarget ? " · 已达标" : ""}`);
   } else if (repeat === "once") {
-    parts.push("仅今天");
+    parts.push(viewingPast ? "当天限定" : "仅今天");
   }
   parts.push(actionPraiseLabel(habit.praiseScore), habit.description);
   return parts.filter(Boolean).join(" · ");
@@ -850,6 +984,16 @@ function renderActionCalendar() {
     if (completed) button.dataset.progress = complete ? "complete" : "partial";
     if (focused?.dataset.calendarDate === key) nextFocus = button;
     button.addEventListener("click", () => {
+      // 单击：右侧切到这一天的记录；双击（420ms 内连点同一格）：把行动面板也切到这一天。
+      const now = performance.now();
+      const doubleClick = calendarLastClick?.key === key && now - calendarLastClick.at < 420;
+      calendarLastClick = { key, at: now };
+      if (doubleClick) {
+        calendarLastClick = undefined;
+        openActionDay(key);
+        return;
+      }
+      if (calendarDate === key) return;
       calendarDate = key;
       el["action-calendar-status"].textContent = "";
       renderActionCalendar();
@@ -863,7 +1007,7 @@ function renderActionCalendar() {
   el["action-calendar-date"].textContent = `${calendarDate.slice(0, 4)}年${formatDate(calendarDate)}`;
   const completed = new Map(state.entries.filter(entry => entry.date === calendarDate).map(entry => [entry.kind, entry]));
   const calendarHabits = state.habits.filter(habit =>
-    actionAvailableOn(habit, calendarDate, today) || completed.has(habit.id));
+    actionScheduledOn(habit, calendarDate) || completed.has(habit.id));
   el["action-calendar-count"].textContent = `已完成 ${totals.get(calendarDate) ?? 0} / ${calendarHabits.length}`;
   const habits = calendarHabits.map(habit => {
     const entry = completed.get(habit.id);
@@ -872,14 +1016,22 @@ function renderActionCalendar() {
     const weekMet = repeat === "weekly" && weekDone >= habit.weeklyTarget;
     const button = document.createElement("button");
     button.type = "button";
-    button.disabled = !actionAvailableOn(habit, calendarDate, today) || (weekMet && !entry);
+    const actionable = actionAvailableOn(habit, calendarDate, today);
+    button.disabled = !actionable || (weekMet && !entry);
     button.dataset.calendarHabit = habit.id;
     button.setAttribute("aria-pressed", String(Boolean(entry)));
     const name = document.createElement("strong");
     name.textContent = habit.name;
     const label = document.createElement("span");
-    const status = entry?.source === "finance-link" ? "自动完成" : entry ? "已完成" : `+${actionReward(habit)} 标记完成`;
-    label.textContent = repeat === "weekly" ? `${status} · 本周 ${weekDone}/${habit.weeklyTarget}` : status;
+    // 周常打卡不给生命力，文案说清「已打卡 / 已达标」，别写成 +N。
+    // 日抛行动在历史那天补记时点明「补记」，和当天的「标记完成」区分开。
+    const status = entry?.source === "finance-link" ? "自动完成"
+      : repeat === "weekly"
+        ? (weekMet ? "已达标" : entry ? "已打卡" : `达标可得 +${actionReward(habit)}`)
+        : entry ? "已完成"
+          : repeat === "once" && calendarDate !== today ? `+${actionReward(habit)} 补记完成`
+            : `+${actionReward(habit)} 标记完成`;
+    label.textContent = repeat === "weekly" ? `${status} · ${calendarDate === today ? "本周" : "当周"} ${weekDone}/${habit.weeklyTarget}` : status;
     button.append(name, label);
     button.addEventListener("click", () => toggleActionCompletion(habit.id, calendarDate, el["action-calendar-status"]));
     if (focused?.dataset.calendarHabit === habit.id) nextFocus = button;
@@ -894,6 +1046,132 @@ function renderActionCalendar() {
   el["action-calendar-habits"].replaceChildren(...habits);
   nextFocus?.focus({ preventScroll: true });
 }
+
+// 生命力榜沿用两个口径，赞美榜按行动当前填写的指数排序。
+// ① 单个行动累计生命力 —— 日常每天都在做、周常按周结算，跟日抛行动不可比，排除在外。
+// ② 单日生命力 —— 排除周常达标奖励，因为「哪天凑满次数」带偶然性，会让那天凭空占优。
+function leaderboardRows() {
+  const actions = new Map();
+  const days = new Map();
+  for (const entry of state.entries) {
+    if (!entry.date || entry.kind === "sample" || entry.weekly || entry.weeklyMark) continue;
+    const points = actionReward(entry);
+    if (!points) continue;
+    const habit = state.habits.find(item => item.id === entry.kind);
+    if (habit && habitRepeat(habit) === "once") {
+      const row = actions.get(habit.id) ?? { name: habit.name, points: 0, count: 0 };
+      row.points += points;
+      row.count += 1;
+      actions.set(habit.id, row);
+    }
+    const day = days.get(entry.date) ?? { points: 0, count: 0 };
+    day.points += points;
+    day.count += 1;
+    days.set(entry.date, day);
+  }
+  return {
+    actions: [...actions.values()].sort((a, b) =>
+      b.points - a.points || b.count - a.count || a.name.localeCompare(b.name, "zh")),
+    days: [...days].map(([date, row]) => ({ date, ...row })).sort((a, b) =>
+      b.points - a.points || (a.date < b.date ? 1 : -1)),
+    praise: state.habits.filter(habit => actionPraiseLabel(habit.praiseScore))
+      .map(habit => ({ name: habit.name, points: habit.praiseScore }))
+      .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "zh")),
+  };
+}
+
+const weekdayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+let leaderboardDimension = "actions";
+
+function renderLeaderboard() {
+  const { actions, days, praise } = leaderboardRows();
+  for (const tab of el["leaderboard-dialog"].querySelectorAll("[data-leaderboard]")) {
+    const active = tab.dataset.leaderboard === leaderboardDimension;
+    tab.setAttribute("aria-pressed", String(active));
+    el[tab.getAttribute("aria-controls")].hidden = !active;
+  }
+  const fill = (list, rows, emptyText) => {
+    if (!rows.length) {
+      const empty = document.createElement("li");
+      empty.className = "leaderboard-empty";
+      empty.textContent = emptyText;
+      list.replaceChildren(empty);
+      return;
+    }
+    list.replaceChildren(...rows.map((row, index) => {
+      const item = document.createElement("li");
+      item.className = "leaderboard-row";
+      item.dataset.rank = String(index + 1);
+      const rank = document.createElement("span");
+      rank.className = "leaderboard-rank";
+      rank.textContent = String(index + 1);
+      const copy = document.createElement("span");
+      copy.className = "leaderboard-copy";
+      const name = document.createElement("strong");
+      name.textContent = row.title;
+      const caption = document.createElement("small");
+      caption.textContent = row.caption;
+      copy.append(name, caption);
+      const points = document.createElement("span");
+      points.className = "leaderboard-points";
+      points.textContent = row.score ? `${row.points} 分` : `+${row.points}`;
+      item.append(rank, copy, points);
+      return item;
+    }));
+  };
+  fill(el["leaderboard-actions"], actions.map(row => ({
+    title: row.name, caption: `${row.count} 次`, points: row.points,
+  })), "还没有日抛行动的生命力记录。");
+  fill(el["leaderboard-days"], days.slice(0, 10).map(row => ({
+    title: `${row.date.slice(0, 4)}年${formatDate(row.date)}`,
+    caption: `${weekdayNames[new Date(`${row.date}T12:00:00`).getDay()]} · ${row.count} 项行动`,
+    points: row.points,
+  })), "还没有可排行的日子。");
+  fill(el["leaderboard-praise"], praise.map(row => ({
+    title: row.name, caption: actionPraiseLabel(row.points), points: row.points, score: true,
+  })), "在行动编辑中填写赞美指数，即可加入榜单。");
+  el["leaderboard-status"].textContent = leaderboardDimension === "days" && days.length > 10
+    ? `单日榜只显示前 10 天，共 ${days.length} 天有记录。`
+    : "";
+}
+
+for (const tab of el["leaderboard-dialog"].querySelectorAll("[data-leaderboard]")) {
+  tab.addEventListener("click", () => {
+    leaderboardDimension = tab.dataset.leaderboard;
+    renderLeaderboard();
+  });
+}
+
+el["open-leaderboard"].addEventListener("click", () => {
+  renderLeaderboard();
+  el["leaderboard-dialog"].showModal();
+});
+
+// 行内编辑的「基准日」：正在看历史某天就以那天为准，否则是今天。
+// 历史编辑时重复频率会被锁定，日抛行动的 onlyOn 也保持原值，不会被搬到今天。
+function actionEditorDay() {
+  return actionViewDay ?? todayKey();
+}
+
+// 把行动面板切到指定日期（今天则回到实时状态），并关掉日历让面板露出来。
+function openActionDay(day) {
+  actionViewDay = day === todayKey() ? undefined : day;
+  if (el["action-calendar-dialog"].open) el["action-calendar-dialog"].close();
+  updateControls();
+  if (!el.actions.open) el.actions.showModal();
+}
+
+el["action-day-label"].addEventListener("click", () => {
+  if (!actionViewDay) return;
+  actionViewDay = undefined;
+  updateControls();
+});
+// 关掉行动面板就回到今天，避免下次打开还停在历史某天。
+el.actions.addEventListener("close", () => {
+  if (!actionViewDay && displayedDay === renderedToday) return;
+  actionViewDay = undefined;
+  updateControls();
+});
 
 el["open-action-calendar"].addEventListener("click", () => {
   const yesterday = new Date(`${todayKey()}T00:00:00Z`);
@@ -1010,8 +1288,33 @@ function habitCategory(habit) {
   return category !== "all" && actionCategories.has(category) ? category : "other";
 }
 
+// 左侧图案跟着维度走：有手绘贴图的用精灵图，理财与「注意」用自带配色的矢量图标。
+function habitArtName(habit, category) {
+  const label = actionCategories.get(category);
+  if (label === "理财") return "art-finance";
+  if (label === "注意") return "art-warning";
+  if (category === "other") return { study: "study", move: "exercise" }[habit.id] ?? "other";
+  return category;
+}
+
 function actionCategoryLabel(label) {
   return label.replace(/^⚠\uFE0F?\s*(?=注意$)/u, "");
+}
+
+// 内置分类排在自定义分类前面，但「理财」习惯上要夹在「摄影」和「注意」之间。
+function actionCategoryOrder(categories) {
+  const entries = [...categories];
+  const finance = entries.findIndex(([id]) => id === "finance");
+  if (finance < 0) return entries;
+  const [money] = entries.splice(finance, 1);
+  const note = entries.findIndex(([, label]) => label === "注意");
+  if (note >= 0) {
+    entries.splice(note, 0, money);
+    return entries;
+  }
+  const shot = entries.findIndex(([, label]) => label.trim() === "摄影");
+  entries.splice(shot >= 0 ? shot + 1 : finance, 0, money);
+  return entries;
 }
 
 function renderActionCategories() {
@@ -1025,7 +1328,7 @@ function renderActionCategories() {
   const selected = select.value;
   tabs.replaceChildren();
   select.replaceChildren();
-  for (const [category, label] of actionCategories) {
+  for (const [category, label] of actionCategoryOrder(actionCategories)) {
     const tab = document.createElement("button");
     tab.type = "button";
     tab.dataset.category = category;
@@ -1034,6 +1337,7 @@ function renderActionCategories() {
     artwork.className = "action-category-icon";
     artwork.setAttribute("aria-hidden", "true");
     if (category === "all") artwork.innerHTML = icon("action-grid");
+    else if (category === "finance") artwork.innerHTML = icon("action-money");
     else if (label.trim() === "摄影") artwork.innerHTML = icon("action-camera");
     else if (label === "注意") artwork.innerHTML = icon("action-warning");
     else artwork.classList.add("action-art");
@@ -1076,7 +1380,7 @@ function renderHabits(day = todayKey()) {
   habitButtons.clear();
   el.habits.replaceChildren();
   for (const habit of state.habits) {
-    if (!actionAvailableOn(habit, day, day)) continue;
+    if (!actionScheduledOn(habit, day)) continue;
     const category = habitCategory(habit);
     const row = document.createElement("div");
     row.className = "action-row";
@@ -1087,7 +1391,14 @@ function renderHabits(day = todayKey()) {
     button.dataset.kind = habit.id;
     const artwork = document.createElement("span");
     artwork.className = "action-art habit-art";
-    artwork.dataset.art = category === "other" ? ({ study: "study", move: "exercise" }[habit.id] ?? "other") : category;
+    const art = habitArtName(habit, category);
+    if (art.startsWith("art-")) {
+      // 精灵图里没有「理财」「注意」这两类，用自带配色的矢量图标代替。
+      artwork.classList.add("habit-art-drawn");
+      artwork.innerHTML = icon(art);
+    } else {
+      artwork.dataset.art = art;
+    }
     artwork.setAttribute("aria-hidden", "true");
     const chip = document.createElement("span");
     chip.className = "habit-category";
@@ -1129,7 +1440,7 @@ function renderHabits(day = todayKey()) {
     control.setAttribute("aria-hidden", "true");
     side.append(reward, control);
     button.append(artwork, chip, copy, side);
-    button.addEventListener("click", () => toggleActionCompletion(habit.id));
+    button.addEventListener("click", () => toggleActionCompletion(habit.id, day));
 
     const edit = document.createElement("button");
     edit.type = "button";
@@ -1147,18 +1458,22 @@ function renderHabits(day = todayKey()) {
 
 function openActionEditor(id) {
   const habit = state.habits.find(item => item.id === id);
-  const day = todayKey();
-  if (habit && !actionAvailableOn(habit, day, day)) {
+  const day = actionEditorDay();
+  if (habit && !actionScheduledOn(habit, day)) {
     updateControls();
     return;
   }
   editingHabit = habit?.id;
-  el["action-editor-title"].textContent = habit ? "编辑行动" : "新增行动";
+  // 历史日期只改这一项的属性，不让「重复频率」把行动搬去别的日子。
+  const lockedRepeat = Boolean(habit) && day !== todayKey();
+  el["action-editor-title"].textContent = habit ? (lockedRepeat ? `编辑行动 · ${formatDate(day)}` : "编辑行动") : "新增行动";
   el["action-name"].value = habit?.name ?? "";
   el["action-name"].setCustomValidity("");
   el["action-description"].value = habit?.description ?? "";
   el["action-category"].value = habit ? habitCategory(habit) : actionFilter === "all" ? "other" : actionFilter;
   el["action-repeat"].value = habit ? habitRepeat(habit) : "daily";
+  el["action-repeat"].disabled = lockedRepeat;
+  el["action-repeat"].title = lockedRepeat ? "历史日期不能修改重复频率" : "";
   el["action-weekly-target"].value = habit?.weeklyTarget ?? 4;
   updateWeeklyField();
   el["action-reward"].value = actionReward(habit);
@@ -1190,7 +1505,8 @@ function saveHabits(habits, entries = state.entries) {
     el["action-editor-status"].textContent = "浏览器无法保存此次修改。";
     return false;
   }
-  renderHabits();
+  // 跟着当前查看的那天重绘，否则在历史视图里保存会把列表悄悄换成今天的行动。
+  renderHabits(actionEditorDay());
   if (state.entries !== previousEntries) renderOrbs();
   updateControls();
   return true;
@@ -1263,8 +1579,8 @@ el["action-editor-form"].addEventListener("input", () => {
     el["action-editor-status"].textContent = "该行动已被删除。";
     return;
   }
-  const day = todayKey();
-  if (!actionAvailableOn(habit, day, day)) {
+  const day = actionEditorDay();
+  if (!actionScheduledOn(habit, day)) {
     el["action-editor-status"].textContent = "这项行动已过期。";
     return;
   }
@@ -1275,7 +1591,8 @@ el["action-editor-form"].addEventListener("input", () => {
     el["action-editor-status"].textContent = "每周目标次数请输入 1–7 的整数。";
     return;
   }
-  const onlyOn = repeat === "once" ? day : undefined;
+  // 日抛行动的限定日保持原样，只有今天新建/从别的频率改成日抛时才取基准日。
+  const onlyOn = repeat === "once" ? (habit.onlyOn ?? day) : undefined;
   const weeklyTarget = repeat === "weekly" ? el["action-weekly-target"].valueAsNumber : undefined;
   const praiseScore = praiseLabel ? actionPraiseInput.valueAsNumber : undefined;
   const habits = state.habits.map(item => item === habit ? { ...item, name, description, category, reward, onlyOn, weeklyTarget, praiseScore } : item);
@@ -1416,33 +1733,44 @@ function updateExpansionDialog() {
 }
 
 function updateControls() {
-  const day = todayKey();
+  const today = todayKey();
+  const day = actionViewDay ?? today;
+  const viewingPast = day !== today;
   if (day !== displayedDay) renderHabits(day);
   displayedDay = day;
+  renderedToday = today;
   updatePlayer();
   const completed = new Map(state.entries.filter(entry => entry.date === day).map(entry => [entry.kind, entry]));
   let completedCount = 0;
   let goal = 0;
-  let possibleReward = 0;
+  let earnableReward = 0;
+  let weekDone = 0;
+  let weekGoal = 0;
+  let weeklyCount = 0;
   for (const habit of state.habits) {
     const controls = habitButtons.get(habit.id);
     if (!controls) continue;
-    const { button, rewardAmount, description, row } = controls;
+    const { button, edit, rewardAmount, description, row } = controls;
     const entry = completed.get(habit.id);
     const done = Boolean(entry);
-    const reward = actionReward(entry ?? habit);
     const repeat = habitRepeat(habit);
-    const weekDone = repeat === "weekly" ? weeklyDone(habit, day) : 0;
-    const weekMet = repeat === "weekly" && weekDone >= habit.weeklyTarget;
-    // 本周已达标的周常行动不再占今天的份额；其余行动在今天都算「待办」。
-    const onTodayPlate = done || repeat !== "weekly" || !weekMet;
-    if (onTodayPlate) {
+    // 周常的打卡记录不带生命力，行内始终展示这项行动的奖励额度。
+    const reward = repeat === "weekly" ? actionReward(habit) : actionReward(entry ?? habit);
+    const weekTarget = repeat === "weekly" ? habit.weeklyTarget : 0;
+    const weekProgress = repeat === "weekly" ? weeklyDone(habit, day) : 0;
+    const weekMet = repeat === "weekly" && weekProgress >= weekTarget;
+    // 周常按「本周」结算，不占今日进度；今日进度只统计今天必须做的日常与日抛行动。
+    if (repeat === "weekly") {
+      weeklyCount++;
+      weekGoal += weekTarget;
+      weekDone += Math.min(weekProgress, weekTarget);
+    } else {
       goal++;
       if (done) completedCount++;
-      possibleReward += reward;
+      else earnableReward += reward;
     }
     if (description && repeat === "weekly") {
-      const text = habitDetailText(habit, day, weekDone);
+      const text = habitDetailText(habit, day, weekProgress);
       description.textContent = text;
       description.title = text;
     }
@@ -1452,36 +1780,73 @@ function updateControls() {
     button.setAttribute("aria-description", [
       actionCategories.get(habitCategory(habit)),
       repeatLabel(habit),
-      repeat === "weekly" ? `本周 ${weekDone}/${habit.weeklyTarget}` : habit.onlyOn && "仅今天",
-      weekMet ? "本周已达标" : "",
+      repeat === "weekly" ? `本周 ${weekProgress}/${weekTarget}` : habit.onlyOn && "仅今天",
+      weekMet ? "本周已达标" : repeat === "weekly" ? `达标后一次性获得 ${reward} 点生命力` : "",
       actionPraiseLabel(habit.praiseScore),
       habit.description,
-      `${reward} 点生命力`,
+      repeat === "weekly" ? "" : `${reward} 点生命力`,
     ].filter(Boolean).join("，"));
     button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成" : done ? "取消完成" : weekMet ? "本周已达标，下周继续" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
+    const rewardBox = rewardAmount.parentElement;
+    rewardBox.classList.toggle("is-locked", repeat === "weekly" && !weekMet);
+    rewardBox.title = repeat !== "weekly" ? "" : weekMet
+      ? `本周已达标，可获得 ${reward} 点生命力`
+      : `本周 ${weekTarget} 次达标后一次性获得 ${reward} 点`;
+    // 历史日期也允许改行动本身（重复频率会被锁定），只是不能再补记/取消当天记录。
+    edit.disabled = false;
+    edit.title = viewingPast ? "编辑行动（历史日期，重复频率已锁定）" : "编辑行动";
   }
   const count = document.createElement("span");
   count.textContent = completedCount;
   el["action-count"].replaceChildren(count, ` / ${goal}`);
+  el["action-day-label"].textContent = viewingPast ? formatDate(day) : "今日";
+  el["action-day-label"].classList.toggle("is-past", viewingPast);
+  el["action-day-label"].title = viewingPast ? "回到今天" : "今天";
+  const dayWord = viewingPast ? "当天" : "今日";
+  el["action-total-label"].textContent = `${dayWord}还可获得`;
   const progress = goal ? completedCount / goal : 0;
   el["action-progress"].style.setProperty("--progress", `${progress * 100}%`);
   for (const [index, leaf] of [...el["action-progress"].querySelectorAll("i")].entries()) {
-    leaf.classList.toggle("is-complete", index < Math.floor(progress * 5));
+    leaf.classList.toggle("is-complete", index < Math.round(progress * 5) && progress > 0);
   }
-  el["action-total"].textContent = `+${possibleReward}`;
-  const { best, total: historyTotal, average } = actionHistory(state.entries, day);
+  el["action-week-line"].hidden = weeklyCount === 0;
+  el["action-week-line"].firstElementChild.textContent = viewingPast ? "当周" : "本周";
+  el["action-week-count"].textContent = `${weekDone} / ${weekGoal}`;
+  el["action-week-line"].title = `${viewingPast ? "当" : "本"}周周常行动已完成 ${weekDone} 次，目标 ${weekGoal} 次`;
+  el["action-total"].textContent = `+${earnableReward}`;
+  // 今日必做的日常/日抛都完成时，右侧改说「已全部完成」，不再显示 +0。
+  const todayDone = goal === 0 || completedCount === goal;
+  el["action-total-pill"].classList.toggle("is-empty", todayDone);
+  el["action-total-copy"].hidden = todayDone;
+  el["action-total-done"].hidden = !todayDone;
+  if (todayDone) {
+    const doneLabel = document.createElement("strong");
+    doneLabel.textContent = goal === 0 ? `${dayWord}暂无行动` : "已全部完成";
+    if (goal === 0) {
+      el["action-total-done"].replaceChildren(doneLabel);
+    } else {
+      el["action-total-done"].replaceChildren(`${dayWord}行动`, document.createElement("br"), doneLabel);
+    }
+    el["action-total-pill"].setAttribute("aria-label", goal === 0
+      ? `${dayWord}没有必做的行动`
+      : `${dayWord}必做的 ${goal} 项行动已全部完成，还可获得 ${earnableReward} 点生命力`);
+  } else {
+    el["action-total-pill"].setAttribute("aria-label", `${dayWord}还可获得 ${earnableReward} 点生命力`);
+  }
+  const { best, total: historyTotal, average } = actionHistory(state.entries, today);
   el["action-best-day"].textContent = best ? formatDate(best.date) : "暂无记录";
   el["action-best-points"].textContent = best ? `+${best.points}` : "";
   el["action-best-points"].hidden = !best;
   el["action-best-line"].dataset.empty = best ? "" : "true";
-  el["action-best-line"].classList.toggle("is-today", best?.date === day);
+  el["action-best-line"].classList.toggle("is-today", best?.date === today);
   el["action-history-total"].textContent = historyTotal;
   el["action-average"].textContent = Number.isInteger(average) ? average : average.toFixed(1);
   el["open-action-calendar"].setAttribute("aria-description", best
     ? `历史最佳 ${formatDate(best.date)}，${best.points} 点生命力；累计 ${historyTotal} 点，日均 ${el["action-average"].textContent} 点`
     : "暂无历史记录");
   if (el["action-calendar-dialog"].open) renderActionCalendar();
+  if (el["leaderboard-dialog"].open) renderLeaderboard();
 
   const balance = availableEnergy();
   const pending = state.entries.reduce((total, entry) => entry.collected ? total : total + actionReward(entry), 0);
@@ -1690,10 +2055,10 @@ function actionRecordLabel(entry) {
 
 function toggleActionCompletion(kind, date = todayKey(), status = el["action-status"]) {
   const day = todayKey();
-  if (day !== displayedDay) updateControls();
+  if (day !== renderedToday) updateControls();
   const habit = state.habits.find(item => item.id === kind);
   if (!habit || date > day || !actionAvailableOn(habit, date, day)) return;
-  const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind);
+  const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind && !entry.weekly);
   if (index < 0) {
     if (weeklyTargetMet(habit, date)) {
       status.textContent = `本周 ${habit.weeklyTarget} 次已达标，下周继续。`;
@@ -1709,13 +2074,20 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
     return;
   }
   const spent = spentEnergyIds();
+  // 周常撤回这一次后可能不再达标，本周已发的达标奖励要一起收回。
+  const award = habitRepeat(habit) === "weekly" ? weeklyAwardEntry(habit, date) : undefined;
+  const awardSpent = award && [...spent].some(id => energyEntryId(id) === award.id);
+  if (awardSpent) {
+    status.textContent = "本周达标奖励的生命力已花费，撤回这次打卡会不满足达标条件。";
+    return;
+  }
   if ([...spent].some(id => energyEntryId(id) === entry.id)) {
     status.textContent = "❌这项行动的生命力已花费，无法取消完成。";
     return;
   }
 
   const previous = state.entries;
-  state.entries = previous.filter(item => item !== entry);
+  state.entries = previous.filter(item => item !== entry && item !== award);
   if (!saveState()) {
     state.entries = previous;
     status.textContent = "浏览器无法保存，取消完成失败。";
@@ -1724,21 +2096,34 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
   renderOrbs();
   updateControls();
   const spentByEntry = countSpentEnergyByEntry(spent);
-  const deducted = remainingEntryEnergy(entry, spentByEntry);
+  const deducted = remainingEntryEnergy(entry, spentByEntry) + (award ? remainingEntryEnergy(award, spentByEntry) : 0);
   status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
 }
 
 function addActionEntry(habit, date, source, snapshot = state) {
   const { id: kind } = habit;
   const actionLabel = habit.description ? `${habit.name} · ${habit.description}` : habit.name;
-  const reward = actionReward(habit);
-  snapshot.entries.push({ id: `${date}:${kind}`, date, kind, actionLabel, reward, collected: false, source });
-  return { reward };
+  const weekly = habitRepeat(habit) === "weekly";
+  // 周常这时只是打卡，不给生命力；本周次数达标后由 awardWeekly 一次性结算。
+  const entry = {
+    id: `${date}:${kind}`,
+    date,
+    kind,
+    actionLabel,
+    reward: weekly ? 0 : actionReward(habit),
+    // 周常打卡不进待领取（collected = true 只是「不需要领取」，生命力量本身为 0）。
+    collected: weekly,
+    source,
+  };
+  if (weekly) entry.weeklyMark = true;
+  snapshot.entries.push(entry);
+  const award = awardWeekly(habit, date, snapshot);
+  return { reward: actionReward(habit), award, weekly };
 }
 
 function record(habit, date, status) {
   const previousLength = state.entries.length;
-  const { reward } = addActionEntry(habit, date);
+  const { reward, award, weekly } = addActionEntry(habit, date);
   if (!saveState()) {
     state.entries.length = previousLength;
     status.textContent = "浏览器无法保存，标记完成失败。";
@@ -1746,6 +2131,13 @@ function record(habit, date, status) {
   }
   renderOrbs();
   updateControls();
+  if (weekly) {
+    const done = weeklyDone(habit, date);
+    status.textContent = award
+      ? `本周 ${habit.weeklyTarget} 次达标，${reward} 点生命力可在家门口领取。`
+      : `已记录本周第 ${done} 次，还差 ${habit.weeklyTarget - done} 次达标。`;
+    return;
+  }
   status.textContent = `已标记完成，${reward} 点生命力可在家门口领取。`;
 }
 
@@ -1754,7 +2146,7 @@ function applyFinanceLink({ date, recorded, happy }) {
   if (recorded !== true) return true;
   const snapshot = inExperiment ? readState() : state;
   const previousLength = snapshot.entries.length;
-  const habit = snapshot.habits.find(item => item.name.trim() === "伊比理财" && actionAvailableOn(item, date, date));
+  const habit = snapshot.habits.find(item => item.name.trim() === "伊比理财" && actionScheduledOn(item, date));
   const completed = habit && !snapshot.entries.some(entry => entry.date === date && entry.kind === habit.id);
   if (completed) addActionEntry(habit, date, "finance-link", snapshot);
 
@@ -3190,7 +3582,7 @@ for (const [id, fertilizer] of fertilizers) {
 function refreshSavedForest() {
   state = readState(activeForestSave());
   renderActionCategories();
-  renderHabits();
+  renderHabits(actionEditorDay());
   renderPlots();
   renderOrbs();
   updateControls();
@@ -3216,24 +3608,27 @@ window.addEventListener("online", () => void forestSave.sync());
 window.addEventListener("offline", () => void forestSave.sync());
 document.addEventListener("visibilitychange", () => {
   void forestSave.sync();
-  if (!document.hidden && todayKey() !== displayedDay) updateControls();
+  if (!document.hidden && todayKey() !== renderedToday) updateControls();
 });
 setInterval(() => void forestSave.sync(), 30_000);
 el["account-sync-retry"].addEventListener("click", () => void forestSave.sync());
 el["account-sync-local"].addEventListener("click", () => forestSave.resolveConflict("local"));
 el["account-sync-cloud"].addEventListener("click", () => forestSave.resolveConflict("cloud"));
 window.addEventListener("focus", () => {
-  if (todayKey() !== displayedDay) updateControls();
+  if (todayKey() !== renderedToday) updateControls();
   refreshGrowth();
 });
 setInterval(refreshGrowth, 1000);
 setInterval(() => {
-  if (todayKey() !== displayedDay) updateControls();
+  if (todayKey() !== renderedToday) updateControls();
 }, 30_000);
 
 renderActionCategories();
 renderPlots();
 renderOrbs();
 updateControls();
+if (state.weeklyEnergyReclaimed > 0) {
+  notify(`已收回 ${state.weeklyEnergyReclaimed} 点按旧规则重复发放的周常生命力。`);
+}
 cameraTo(875, false);
 syncWorldScene();

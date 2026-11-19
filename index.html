@@ -28,6 +28,21 @@
     <symbol id="action-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></symbol>
     <symbol id="action-camera" viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
     <symbol id="action-warning" viewBox="0 0 24 24"><path d="M10.3 4.9a2 2 0 0 1 3.4 0l7.7 12.8a2 2 0 0 1-1.7 3H4.3a2 2 0 0 1-1.7-3Z"/><path d="M12 9v4m0 3.5h.01"/></symbol>
+    <symbol id="action-money" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.6"/><path d="M12 7.6v8.8M9.6 10.3h4.8M9.6 13.7h4.8"/></symbol>
+    <symbol id="art-finance" viewBox="0 0 94 90">
+      <rect width="94" height="90" rx="19" fill="#fdefcd"/>
+      <path d="M39 21h16a3.4 3.4 0 0 1 3 4.9l-1.7 3.6H37.7l-1.7-3.6A3.4 3.4 0 0 1 39 21Z" fill="#cf9136" stroke="#7d4c17" stroke-width="3.2" stroke-linejoin="round"/>
+      <path d="M43.6 29.5h6.8c11.2.3 20.6 10 20.6 22.1C71 63.8 62.1 71 47 71S23 63.8 23 51.6c0-12.1 9.4-21.8 20.6-22.1Z" fill="#e9b055" stroke="#7d4c17" stroke-width="3.2" stroke-linejoin="round"/>
+      <path d="M47 42v19M40 48.5h14M40 56.5h14" fill="none" stroke="#7d4c17" stroke-width="3.2" stroke-linecap="round"/>
+      <circle cx="70" cy="24" r="10.5" fill="#ffd76a" stroke="#a96f1b" stroke-width="3"/>
+      <path d="M70 18.5v11M66.5 22.5h7M66.5 26.8h7" fill="none" stroke="#a96f1b" stroke-width="2.4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="art-warning" viewBox="0 0 94 90">
+      <rect width="94" height="90" rx="19" fill="#fdeacb"/>
+      <path d="M47 19.5 79 70.5H15Z" fill="#f7c64c" stroke="#8a5a12" stroke-width="3.4" stroke-linejoin="round"/>
+      <path d="M47 36.5v18.5" stroke="#7a4a10" stroke-width="5.4" stroke-linecap="round"/>
+      <circle cx="47" cy="62.4" r="3.8" fill="#7a4a10"/>
+    </symbol>
     <symbol id="reflect" viewBox="0 0 24 24"><path d="M20 15a8 8 0 0 1-11-11 8.5 8.5 0 1 0 11 11Zm-5-9h5m-2.5-2.5v5"/></symbol>
     <symbol id="save" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="12" rx="4"/><path d="M4 8h16M8 5h8m-6 7h4"/></symbol>
     <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -37,6 +52,8 @@
     <symbol id="cart" viewBox="0 0 24 24"><path d="M2 3h3l3 12h11l3-9H6m3 12h10"/><circle cx="10" cy="21" r="1"/><circle cx="18" cy="21" r="1"/></symbol>
     <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
     <symbol id="edit-action" viewBox="0 0 24 24"><path d="m5 15-1 5 5-1L20 8l-4-4L5 15Zm9-9 4 4"/></symbol>
+    <symbol id="rank" viewBox="0 0 24 24"><path d="M4 20V11m5.5 9V5M15 20v-6m5.5 6V8"/><path d="M2.5 20h19"/></symbol>
+    <symbol id="calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h2m4 0h2m-8 3h2"/></symbol>
   </svg>
   <svg class="tooltip-board-definitions" aria-hidden="true">
     <defs>
@@ -83,7 +100,7 @@
           <img class="scene-image" id="scene-image" src="./assets/peach-valley-farm.webp" width="1672" height="941" alt="山谷里，溪流穿过木桥，农田坐落在泉水和木屋之间。">
           <div class="plots" id="plots" role="group" aria-label="农田"></div>
           <div class="orbs" id="orbs" role="group" aria-label="家门口的待收生命力"></div>
-          <div class="experiment-dog" id="experiment-dog" role="img" aria-label="穿粉色背心的小白狗" hidden>
+          <div class="experiment-dog" id="experiment-dog" role="img" tabindex="0" aria-label="穿粉色背心的小白狗" aria-haspopup="menu" aria-controls="dog-menu" hidden>
             <svg class="experiment-dog-filter" aria-hidden="true">
               <filter id="experiment-dog-color" color-interpolation-filters="sRGB">
                 <feColorMatrix type="matrix" values="
@@ -402,12 +419,15 @@
       </header>
       <div class="action-board-paper">
         <div class="action-summary">
-          <div class="action-progress-count"><span>今日进度</span><strong id="action-count">0 / 0</strong></div>
+          <div class="action-progress-count">
+            <span class="action-progress-line"><button class="action-day-label" id="action-day-label" type="button" title="回到今天">今日</button><strong id="action-count">0 / 0</strong></span>
+            <span class="action-progress-line is-week" id="action-week-line" hidden><span>本周</span><b id="action-week-count">0 / 0</b></span>
+          </div>
           <div class="action-progress" id="action-progress" aria-hidden="true">
             <span class="action-progress-track"></span>
             <i class="action-art"></i><i class="action-art"></i><i class="action-art"></i><i class="action-art"></i><i class="action-art"></i>
           </div>
-          <div class="action-total"><i class="action-art action-spark" aria-hidden="true"></i><span>今日可获得<br>生命力 <strong id="action-total">+0</strong></span></div>
+          <div class="action-total" id="action-total-pill"><i class="action-art action-spark" aria-hidden="true"></i><span id="action-total-copy"><span id="action-total-label">今日还可获得</span><br>生命力 <strong id="action-total">+0</strong></span><span id="action-total-done" hidden></span></div>
         </div>
         <div class="action-category-bar">
           <span class="action-art action-category-title" role="img" aria-label="行动分类"></span>
@@ -432,6 +452,7 @@
           <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>行动</button>
           <button class="action-add" id="add-action-category" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#plus"/></svg>分类</button>
           <button class="action-edit-toggle" id="toggle-action-edit" type="button" aria-pressed="false" aria-controls="habits"><svg aria-hidden="true"><use href="#edit-action"/></svg>编辑</button>
+          <button class="action-rank-open" id="open-leaderboard" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#rank"/></svg>排行榜</button>
         </div>
         <p class="guide" id="action-status" role="status"></p>
         <p class="storage visually-hidden" id="storage-note" role="status">行动、植物与库存保存在此浏览器</p>
@@ -453,12 +474,52 @@
         </div>
         <div class="action-calendar-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
         <div id="action-calendar-days" class="action-calendar-days" role="group" aria-label="选择日期"></div>
+        <p class="action-calendar-hint">单击查看当日记录 · 双击在行动面板打开这一天</p>
       </section>
       <section class="action-calendar-records" aria-labelledby="action-calendar-date">
         <div class="action-calendar-records-heading"><h3 id="action-calendar-date"></h3><span id="action-calendar-count"></span></div>
         <div id="action-calendar-habits" class="action-calendar-habits"></div>
         <p id="action-calendar-status" class="guide" role="status"></p>
       </section>
+    </div>
+  </dialog>
+  <dialog id="leaderboard-dialog" aria-labelledby="leaderboard-title">
+    <div class="action-board leaderboard-frame">
+      <header class="action-board-heading">
+        <span class="action-art action-board-top" aria-hidden="true"></span>
+        <h2 id="leaderboard-title">森林排行榜</h2>
+        <form method="dialog"><button class="action-board-close" type="submit" aria-label="关闭排行榜"></button></form>
+      </header>
+      <div class="action-board-paper">
+        <div class="leaderboard-tabs action-categories" role="group" aria-label="排行榜维度">
+          <button type="button" data-leaderboard="actions" aria-pressed="true" aria-controls="leaderboard-action-board"><svg aria-hidden="true"><use href="#rank"/></svg><span>行动生命力</span></button>
+          <button type="button" data-leaderboard="days" aria-pressed="false" aria-controls="leaderboard-day-board"><svg aria-hidden="true"><use href="#calendar"/></svg><span>单日生命力</span></button>
+          <button type="button" data-leaderboard="praise" aria-pressed="false" aria-controls="leaderboard-praise-board"><svg aria-hidden="true"><use href="#spark"/></svg><span>赞美指数</span></button>
+        </div>
+      <section class="leaderboard-board" id="leaderboard-action-board" aria-labelledby="leaderboard-action-title">
+        <div class="leaderboard-heading">
+          <h3 id="leaderboard-action-title">行动 · 累计生命力</h3>
+          <span class="leaderboard-note">不计日常与周常</span>
+        </div>
+        <ol id="leaderboard-actions" class="leaderboard-list"></ol>
+      </section>
+      <section class="leaderboard-board" id="leaderboard-day-board" aria-labelledby="leaderboard-day-title" hidden>
+        <div class="leaderboard-heading">
+          <h3 id="leaderboard-day-title">单日 · 生命力</h3>
+          <span class="leaderboard-note">不计周常达标</span>
+        </div>
+        <ol id="leaderboard-days" class="leaderboard-list"></ol>
+      </section>
+      <section class="leaderboard-board" id="leaderboard-praise-board" aria-labelledby="leaderboard-praise-title" hidden>
+        <div class="leaderboard-heading">
+          <h3 id="leaderboard-praise-title">行动 · 赞美指数</h3>
+          <span class="leaderboard-note">按指数从高到低</span>
+        </div>
+        <ol id="leaderboard-praise" class="leaderboard-list"></ol>
+      </section>
+      <p class="guide" id="leaderboard-status" role="status"></p>
+      </div>
+      <div class="action-board-footer" aria-hidden="true"><span class="action-art action-board-bottom"></span></div>
     </div>
   </dialog>
   <dialog id="action-category-dialog" aria-labelledby="action-category-dialog-title">
@@ -631,5 +692,10 @@
       </form>
     </div>
   </dialog>
+  <div class="dog-menu" id="dog-menu" role="menu" aria-label="和小狗互动" hidden>
+    <p class="dog-menu-title">小狗</p>
+    <button class="dog-menu-item" type="button" role="menuitem" data-dog-action="coy">撒娇</button>
+    <button class="dog-menu-item" type="button" role="menuitem" data-dog-action="fierce">奶凶</button>
+  </div>
 </body>
 </html>
