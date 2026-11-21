@@ -3,7 +3,7 @@ import { extname } from "node:path";
 
 const project = new URL("../", import.meta.url);
 const read = (path, encoding) => readFile(new URL(path, project), encoding);
-const scriptNames = ["save-sync.js", "forest.js", "experiment-dog.js", "ranch.js"];
+const scriptNames = ["save-sync.js", "forest.js", "today-notes.js", "experiment-dog.js", "ranch.js"];
 const [template, forestCss, ranchCss, ...scripts] = await Promise.all(
   ["index.html", "forest.css", "ranch.css", ...scriptNames].map(path => read(path, "utf8")),
 );
@@ -28,7 +28,7 @@ for (const path of [html, ...scripts].join("\n").matchAll(/\.\/assets\/[^\s"'`<>
 }
 
 // These paths are assembled from the crop, tool or animal being rendered.
-for (const folder of ["growth", "tools", "sfx", "ranch"]) {
+for (const folder of ["growth", "tools", "sfx", "ranch", "action-icons"]) {
   const directory = `./assets/${folder}/`;
   for (const entry of await readdir(new URL(directory, project), { withFileTypes: true })) {
     if (entry.isFile() && Object.hasOwn(mimeTypes, extname(entry.name))) assetPaths.add(directory + entry.name);

@@ -12,7 +12,7 @@ const defaultHabits = {
 const initialHabits = () => Object.entries(defaultHabits).map(([id, { name, description }]) => ({ id, name, description }));
 const defaultActionCategories = new Map([
   ["all", "全部"], ["study", "学习"], ["work", "工作"],
-  ["exercise", "锻炼"], ["music", "音乐"], ["inspiration", "灵感"], ["friends", "友人"], ["finance", "理财"], ["other", "其它"],
+  ["exercise", "锻炼"], ["music", "音乐"], ["inspiration", "灵感"], ["friends", "友人"], ["food", "美食"], ["finance", "理财"], ["other", "其它"],
 ]);
 const legacyDailyActionGoal = 5;
 const dailyActionBonus = "daily-action-bonus";
@@ -123,12 +123,12 @@ const plants = new Map([
   ["fir", { ...plantTiers.get(30), name: "杉树", sprite: "./assets/island-fir.webp", height: 170 }],
   ["corn", { ...plantTiers.get(40), name: "玉米", category: "grain", sprite: "./assets/corn.webp", height: 164 }],
   ["pink-rose", { ...plantTiers.get(40), ...plantPlaceholder, name: "粉玫瑰", category: "flower" }],
-  ["banana", { ...plantTiers.get(50), name: "香蕉树", category: "fruit", sprite: "./assets/banana-original-two-bunches.webp", height: 170 }],
+  ["banana", { ...plantTiers.get(50), name: "香蕉树", category: "fruit", sprite: "./assets/banana-with-basket.webp", height: 170 }],
   ["mock-orange", { ...plantTiers.get(50), name: "山梅花", category: "flower", sprite: "./assets/mock-orange.webp", height: 113 }],
   ["orange", { ...plantTiers.get(55), name: "橘子树", category: "fruit", sprite: "./assets/orange.webp", height: 155 }],
   ["sundae-tree", { ...plantTiers.get(55), name: "圣代树", sprite: "./assets/sundae-tree.webp", height: 153 }],
   ["white-birch", { ...plantTiers.get(60), name: "白桦", sprite: "./assets/white-birch.webp", height: 160 }],
-  ["osmanthus", { ...plantTiers.get(65), ...plantPlaceholder, name: "桂花", category: "flower" }],
+  ["osmanthus", { ...plantTiers.get(65), name: "桂花", category: "flower", sprite: "./assets/osmanthus.webp", height: 150 }],
   ["willow", { ...plantTiers.get(65), name: "柳树", sprite: "./assets/willow.webp", height: 158 }],
   ["ginkgo", { ...plantTiers.get(70), name: "银杏", sprite: "./assets/ginkgo.webp", height: 158 }],
   ["cherry", { ...plantTiers.get(75), name: "樱花树", category: "flower", sprite: "./assets/cherry.webp", height: 155 }],
@@ -760,7 +760,11 @@ function actionScheduledOn(habit, date) {
 // 某天还能不能勾选/取消：只要不是未来日期、且这天确实排了这项行动就行。
 // 日抛行动也允许事后补记 —— 漏点不是没做，日期不能倒流但不该阻止如实记录。
 function actionAvailableOn(habit, date, today) {
-  return actionScheduledOn(habit, date) && date <= today;
+  return actionVisibleOn(habit, date) && date <= today;
+}
+
+function actionVisibleOn(habit, date) {
+  return actionScheduledOn(habit, date) || state.entries.some(entry => entry.kind === habit.id && entry.date === date && !entry.weekly);
 }
 
 // daily = 日常行动，weekly = 周常行动（一周内累计达标即算完成），once = 日抛行动（仅当天）。
@@ -951,7 +955,7 @@ function habitDetailText(habit, day, weekDone = 0) {
   }
   parts.push(actionPraiseLabel(habit.praiseScore), habit.description);
   const entry = state.entries.find(item => item.kind === habit.id && item.date === day && !item.weekly);
-  parts.push(workoutSummary(entry?.workout));
+  parts.push(activityRecordSummary(entry));
   return parts.filter(Boolean).join(" · ");
 }
 
@@ -1036,7 +1040,7 @@ function renderActionCalendar() {
             : `+${actionReward(habit)} 标记完成`;
     label.textContent = repeat === "weekly" ? `${status} · ${calendarDate === today ? "本周" : "当周"} ${weekDone}/${habit.weeklyTarget}` : status;
     button.append(name, label);
-    const workout = workoutSummary(entry?.workout);
+    const workout = activityRecordSummary(entry);
     if (workout) {
       const summary = document.createElement("span");
       summary.textContent = workout;
@@ -1315,7 +1319,7 @@ el["open-leaderboard"].addEventListener("click", () => {
 });
 
 // 行内编辑的「基准日」：正在看历史某天就以那天为准，否则是今天。
-// 历史编辑时重复频率会被锁定，日抛行动的 onlyOn 也保持原值，不会被搬到今天。
+// 日常和日抛按当前查看的日期编辑，不会悄悄改到今天。
 function actionEditorDay() {
   return actionViewDay ?? todayKey();
 }
@@ -1447,7 +1451,9 @@ const habitButtons = new Map();
 const plantOptions = new Map();
 const fertilizerOptions = new Map();
 let editingHabit;
+let editingHabitContext;
 let actionFilter = "all";
+let actionCategoryPage = 0;
 let actionCategories;
 
 function habitCategory(habit) {
@@ -1457,7 +1463,7 @@ function habitCategory(habit) {
 
 function actionCategoryArtwork(category) {
   const label = actionCategories.get(category)?.trim();
-  const artwork = { 全部: "all", 学习: "study", 工作: "work", 锻炼: "exercise", 音乐: "music", 灵感: "inspiration", 友人: "friends", 理财: "finance", 摄影: "photography", 注意: "warning" }[label] ?? "other";
+  const artwork = { 全部: "all", 学习: "study", 工作: "work", 锻炼: "exercise", 音乐: "music", 灵感: "inspiration", 友人: "friends", 美食: "food", 理财: "finance", 摄影: "photography", 注意: "warning" }[label] ?? "other";
   const image = document.createElement("img");
   image.src = forestAssetUrl(`./assets/action-icons/${artwork}.webp`);
   image.alt = "";
@@ -1484,6 +1490,38 @@ function actionCategoryOrder(categories) {
   entries.splice(shot >= 0 ? shot + 1 : finance, 0, money);
   return entries;
 }
+
+function actionCategoryPages() {
+  const secondaryLabels = ["工作", "其它", "注意"];
+  const categories = actionCategoryOrder(actionCategories).filter(([id]) => id !== "all");
+  const primary = categories.filter(([, label]) => !secondaryLabels.includes(label));
+  const secondary = categories.filter(([, label]) => secondaryLabels.includes(label))
+    .sort((left, right) => secondaryLabels.indexOf(left[1]) - secondaryLabels.indexOf(right[1]));
+  // Keep each page to two rows; “全部” stays available on every page.
+  const pages = [primary.slice(0, 9)];
+  const remaining = [...secondary, ...primary.slice(9)];
+  for (let index = 0; index < remaining.length; index += 9) pages.push(remaining.slice(index, index + 9));
+  return pages;
+}
+
+function updateActionCategoryPage() {
+  const pages = actionCategoryPages();
+  actionCategoryPage = Math.min(actionCategoryPage, pages.length - 1);
+  const visible = new Set(pages[actionCategoryPage].map(([id]) => id));
+  const order = new Map(["all", ...pages.flat().map(([id]) => id)].map((id, index) => [id, index]));
+  const tabs = [...el["action-categories"].children].sort((left, right) => order.get(left.dataset.category) - order.get(right.dataset.category));
+  el["action-categories"].append(...tabs);
+  for (const tab of el["action-categories"].children) tab.hidden = tab.dataset.category !== "all" && !visible.has(tab.dataset.category);
+  const next = el["action-category-next"];
+  next.hidden = pages.length < 2;
+  next.textContent = actionCategoryPage < pages.length - 1 ? "下一页 ›" : pages.length === 2 ? "‹ 上一页" : "返回首页";
+  next.setAttribute("aria-label", `行动分类，第 ${actionCategoryPage + 1} / ${pages.length} 页，${next.textContent}`);
+}
+
+el["action-category-next"].addEventListener("click", () => {
+  actionCategoryPage = (actionCategoryPage + 1) % actionCategoryPages().length;
+  updateActionCategoryPage();
+});
 
 function renderActionCategories() {
   actionCategories = new Map(defaultActionCategories);
@@ -1517,6 +1555,8 @@ function renderActionCategories() {
     if (category !== "all") select.append(new Option(label, category));
   }
   select.value = selected !== "all" && actionCategories.has(selected) ? selected : "other";
+  if (actionFilter !== "all") actionCategoryPage = Math.max(0, actionCategoryPages().findIndex(page => page.some(([id]) => id === actionFilter)));
+  updateActionCategoryPage();
 }
 
 function filterHabits() {
@@ -1528,7 +1568,7 @@ function filterHabits() {
     row.hidden = actionFilter !== "all" && row.dataset.category !== actionFilter;
     if (!row.hidden) visibleCount++;
   }
-  el.habits.classList.toggle("is-scrollable", visibleCount > 5);
+  el.habits.classList.toggle("is-scrollable", visibleCount > 4);
   el["action-empty"].hidden = visibleCount > 0;
   el["action-empty"].textContent = habitButtons.size ? "这个分类还没有行动。" : "还没有行动，点击新增行动开始记录。";
 }
@@ -1549,7 +1589,7 @@ function renderHabits(day = todayKey()) {
     repeatOrder[habitRepeat(left)] - repeatOrder[habitRepeat(right)] ||
     categoryOrder.get(habitCategory(left)) - categoryOrder.get(habitCategory(right)));
   for (const habit of habits) {
-    if (!actionScheduledOn(habit, day)) continue;
+    if (!actionVisibleOn(habit, day)) continue;
     const category = habitCategory(habit);
     const row = document.createElement("div");
     row.className = "action-row";
@@ -1582,7 +1622,7 @@ function renderHabits(day = todayKey()) {
     copy.append(title);
     const detail = habitDetailText(habit, day, repeat === "weekly" ? weeklyDone(habit, day) : 0);
     let description;
-    if (detail || isWorkoutHabit(habit)) {
+    if (detail || activityRecordConfig(habit)) {
       description = document.createElement("small");
       description.textContent = detail;
       description.title = detail;
@@ -1621,21 +1661,25 @@ function renderHabits(day = todayKey()) {
 function openActionEditor(id) {
   const habit = state.habits.find(item => item.id === id);
   const day = actionEditorDay();
-  if (habit && !actionScheduledOn(habit, day)) {
+  if (habit && !actionVisibleOn(habit, day)) {
     updateControls();
     return;
   }
   editingHabit = habit?.id;
-  // 历史日期只改这一项的属性，不让「重复频率」把行动搬去别的日子。
-  const lockedRepeat = Boolean(habit) && day !== todayKey();
-  el["action-editor-title"].textContent = habit ? (lockedRepeat ? `编辑行动 · ${formatDate(day)}` : "编辑行动") : "新增行动";
+  editingHabitContext = { day, saveKey: activeForestSave().key() };
+  const historical = Boolean(habit) && day !== todayKey();
+  const lockedRepeat = historical && habitRepeat(habit) === "weekly";
+  el["action-editor-title"].textContent = habit ? (historical ? `编辑行动 · ${formatDate(day)}` : "编辑行动") : "新增行动";
   el["action-name"].value = habit?.name ?? "";
   el["action-name"].setCustomValidity("");
   el["action-description"].value = habit?.description ?? "";
   el["action-category"].value = habit ? habitCategory(habit) : actionFilter === "all" ? "other" : actionFilter;
   el["action-repeat"].value = habit ? habitRepeat(habit) : "daily";
   el["action-repeat"].disabled = lockedRepeat;
-  el["action-repeat"].title = lockedRepeat ? "历史日期不能修改重复频率" : "";
+  el["action-repeat"].title = lockedRepeat ? "历史周常行动保持原重复频率" : "";
+  el["action-repeat"].querySelector('[value="weekly"]').disabled = historical && !lockedRepeat;
+  el["action-only-date"].max = todayKey();
+  el["action-only-date"].value = habit?.onlyOn ?? day;
   el["action-weekly-target"].value = habit?.weeklyTarget ?? 4;
   updateWeeklyField();
   el["action-reward"].value = actionReward(habit);
@@ -1652,6 +1696,9 @@ function openActionEditor(id) {
 
 function updateWeeklyField() {
   el["action-weekly-row"].hidden = el["action-repeat"].value !== "weekly";
+  const once = el["action-repeat"].value === "once";
+  el["action-once-row"].hidden = !once;
+  el["action-only-date"].disabled = !once;
 }
 
 el["action-repeat"].addEventListener("change", updateWeeklyField);
@@ -1741,9 +1788,8 @@ el["action-editor-form"].addEventListener("input", () => {
     el["action-editor-status"].textContent = "该行动已被删除。";
     return;
   }
-  const day = actionEditorDay();
-  if (!actionScheduledOn(habit, day)) {
-    el["action-editor-status"].textContent = "这项行动已过期。";
+  if (editingHabitContext?.saveKey !== activeForestSave().key()) {
+    el["action-editor-status"].textContent = "当前存档已切换，请关闭后重新打开。";
     return;
   }
   const description = el["action-description"].value.trim();
@@ -1753,8 +1799,11 @@ el["action-editor-form"].addEventListener("input", () => {
     el["action-editor-status"].textContent = "每周目标次数请输入 1–7 的整数。";
     return;
   }
-  // 日抛行动的限定日保持原样，只有今天新建/从别的频率改成日抛时才取基准日。
-  const onlyOn = repeat === "once" ? (habit.onlyOn ?? day) : undefined;
+  if (repeat === "once" && !el["action-only-date"].validity.valid) {
+    el["action-editor-status"].textContent = "请选择今天或以前的限定日期。";
+    return;
+  }
+  const onlyOn = repeat === "once" ? el["action-only-date"].value : undefined;
   const weeklyTarget = repeat === "weekly" ? el["action-weekly-target"].valueAsNumber : undefined;
   const praiseScore = praiseLabel ? actionPraiseInput.valueAsNumber : undefined;
   const habits = state.habits.map(item => item === habit ? { ...item, name, description, category, reward, onlyOn, weeklyTarget, praiseScore } : item);
@@ -1779,7 +1828,11 @@ el["action-editor-form"].addEventListener("submit", event => {
     el["action-editor-status"].textContent = "每周目标次数请输入 1–7 的整数。";
     return;
   }
-  const onlyOn = repeat === "once" ? todayKey() : undefined;
+  if (repeat === "once" && !el["action-only-date"].validity.valid) {
+    el["action-editor-status"].textContent = "请选择今天或以前的限定日期。";
+    return;
+  }
+  const onlyOn = repeat === "once" ? el["action-only-date"].value : undefined;
   const weeklyTarget = repeat === "weekly" ? el["action-weekly-target"].valueAsNumber : undefined;
   const habit = { id, name, description, category, reward, onlyOn, weeklyTarget, praiseScore };
   if (saveHabits([...state.habits, habit])) el["action-editor"].close();
@@ -1931,7 +1984,7 @@ function updateControls() {
       if (done) completedCount++;
       else earnableReward += reward;
     }
-    if (description && (repeat === "weekly" || isWorkoutHabit(habit))) {
+    if (description && (repeat === "weekly" || activityRecordConfig(habit))) {
       const text = habitDetailText(habit, day, weekProgress);
       description.textContent = text;
       description.title = text;
@@ -1946,11 +1999,11 @@ function updateControls() {
       weekMet ? "本周已达标" : repeat === "weekly" ? `达标后一次性获得 ${reward} 点生命力` : "",
       actionPraiseLabel(habit.praiseScore),
       habit.description,
-      workoutSummary(entry?.workout),
+      activityRecordSummary(entry),
       repeat === "weekly" ? "" : `${reward} 点生命力`,
     ].filter(Boolean).join("，"));
     button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成"
-      : isWorkoutHabit(habit) && (day === today || entry?.workout) ? done ? "查看或修改当天训练记录" : "填写训练记录并完成"
+      : activityRecordConfig(habit) && (day === today || entry?.[activityRecordConfig(habit).key]) ? done ? "查看或修改当天记录" : "填写记录并完成"
       : done ? "取消完成" : weekMet ? "继续记录，本周奖励已结算" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
     const rewardBox = rewardAmount.parentElement;
@@ -1958,9 +2011,9 @@ function updateControls() {
     rewardBox.title = repeat !== "weekly" ? "" : weekMet
       ? `本周已达标，可获得 ${reward} 点生命力`
       : `本周 ${weekTarget} 次达标后一次性获得 ${reward} 点`;
-    // 历史日期也允许改行动本身（重复频率会被锁定），只是不能再补记/取消当天记录。
+    // 历史日期可编辑日常/日抛及其限定日期。
     edit.disabled = false;
-    edit.title = viewingPast ? "编辑行动（历史日期，重复频率已锁定）" : "编辑行动";
+    edit.title = viewingPast ? "编辑这一天的行动" : "编辑行动";
   }
   const count = document.createElement("span");
   count.textContent = completedCount;
@@ -2012,6 +2065,7 @@ function updateControls() {
     : "暂无历史记录");
   if (el["action-calendar-dialog"].open) renderActionCalendar();
   if (el["leaderboard-dialog"].open) renderLeaderboard();
+  if (el["activity-board"].open) renderActivityBoard();
 
   const balance = availableEnergy();
   const pending = state.entries.reduce((total, entry) => entry.collected ? total : total + actionReward(entry), 0);
@@ -2218,48 +2272,386 @@ function actionRecordLabel(entry) {
   return entry.actionLabel ?? defaultHabits[entry.kind]?.description ?? "示例生命力";
 }
 
-const workoutExercises = new Map([
-  ["pushups", "俯卧撑"], ["situps", "仰卧起坐"], ["backExtensions", "仰背"],
-  ["dumbbell", "哑铃"], ["pullups", "引体向上"], ["cableAbs", "滑轮练腹"],
-]);
+const activityRecordTypes = {
+  workout: { key: "workout", label: "训练", fields: [
+    ["pushups", "俯卧撑", "次"], ["situps", "仰卧起坐", "次"], ["backExtensions", "仰背", "次"],
+    ["dumbbell", "哑铃", "次"], ["pullups", "引体向上", "次"], ["cableAbs", "滑轮练腹", "次"],
+  ] },
+  guitar: { key: "guitar", label: "练习", fields: [
+    ["recording", "录歌", "首"], ["chorus", "合唱", "首"], ["bench", "板凳", "首"],
+    ["songTrimming", "歌曲裁剪", "首"], ["wuweiPractice", "无尾练习", "min"], ["fastStrum", "速扫", "min"],
+  ] },
+};
 let workoutContext;
 
-function isWorkoutHabit(habit) {
-  return habit.name.includes("小健身");
+function activityRecordConfig(habit) {
+  if (habit.name.includes("小健身")) return activityRecordTypes.workout;
+  if (habit.name.includes("吉他多种玩法")) return activityRecordTypes.guitar;
 }
 
-function workoutSummary(workout) {
-  if (!workout) return "";
-  return [...workoutExercises].filter(([id]) => workout[id] > 0)
-    .map(([id, label]) => `${label} ${workout[id]} 次`).join(" · ");
+function activityRecordSummary(entry) {
+  return Object.values(activityRecordTypes).flatMap(({ key, fields }) =>
+    fields.filter(([id]) => entry?.[key]?.[id] > 0)
+      .map(([id, label, unit]) => `${label} ${entry[key][id]} ${unit}`)).join(" · ");
 }
 
-for (const [id, name] of workoutExercises) {
-  const label = document.createElement("label");
-  label.htmlFor = `workout-${id}`;
-  label.append(document.createTextNode(name));
-  const value = document.createElement("span");
-  value.className = "workout-field-value";
-  const input = document.createElement("input");
-  input.id = `workout-${id}`;
-  input.name = id;
-  input.type = "number";
-  input.inputMode = "numeric";
-  input.min = "0";
-  input.step = "1";
-  value.append(input, document.createTextNode("次"));
-  label.append(value);
-  el["workout-fields"].append(label);
+const activityPeriods = {
+  day: { total: "当天合计" },
+  week: { total: "当周合计" },
+  month: { total: "当月合计", months: 1 },
+  quarter: { total: "当季合计", months: 3 },
+  year: { total: "当年合计", months: 12 },
+};
+const activityNumber = new Intl.NumberFormat("zh-CN", { maximumSignificantDigits: 12 });
+const activityBoard = { type: "guitar", period: "day", day: "", calendarMonth: "", metrics: {} };
+const activityBoardTypes = el["activity-board"].querySelectorAll("[data-activity-type]");
+const activityBoardPeriods = el["activity-board"].querySelectorAll("[data-activity-period]");
+const activityBoardScrollAreas = el["activity-board"].querySelectorAll(".activity-board-layout, #activity-board-records, #activity-board-bars");
+
+function shiftActivityDay(day, step) {
+  const date = new Date(day + "T00:00:00Z");
+  date.setUTCDate(date.getUTCDate() + step);
+  return date.toISOString().slice(0, 10);
+}
+
+function activityPeriodRange(day, period) {
+  const year = day.slice(0, 4);
+  const month = Number(day.slice(5, 7));
+  const fullDate = key => key.slice(0, 4) + "年" + formatDate(key);
+  if (period === "day") return { start: day, end: day, label: fullDate(day) };
+  if (period === "week") {
+    const start = weekStart(day);
+    const end = weekEnd(day);
+    const endLabel = start.slice(0, 4) === end.slice(0, 4) ? formatDate(end) : fullDate(end);
+    return { start, end, label: `${fullDate(start)} – ${endLabel}` };
+  }
+  const months = activityPeriods[period].months;
+  const firstMonth = Math.floor((month - 1) / months) * months + 1;
+  const start = `${year}-${String(firstMonth).padStart(2, "0")}-01`;
+  const last = new Date(start + "T00:00:00Z");
+  last.setUTCMonth(last.getUTCMonth() + months, 0);
+  const label = period === "month" ? `${year}年${month}月`
+    : period === "quarter" ? `${year}年第 ${Math.ceil(month / 3)} 季度` : `${year}年`;
+  return { start, end: last.toISOString().slice(0, 10), label };
+}
+
+function activityRecordDays(entries, config, today) {
+  const days = new Map();
+  for (const entry of entries) {
+    const values = entry[config.key];
+    if (!values || entry.weekly || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || entry.date > today) continue;
+    const record = config.fields.flatMap(([id, label, unit]) => {
+      const value = values[id];
+      return Number.isFinite(value) && value > 0 ? [{ id, label, unit, value }] : [];
+    });
+    if (!record.length) continue;
+    if (!days.has(entry.date)) days.set(entry.date, { date: entry.date, records: [], totals: {} });
+    const day = days.get(entry.date);
+    day.records.push(record);
+    for (const { id, value } of record) day.totals[id] = (day.totals[id] ?? 0) + value;
+  }
+  return days;
+}
+
+function activityBoardSum(days, metric) {
+  return days.reduce((sum, day) => sum + (day.totals[metric] ?? 0), 0);
+}
+
+function activityTrendBuckets({ start, end }, period) {
+  const buckets = [];
+  for (let day = start; day <= end;) {
+    let last = day;
+    let label = formatDate(day);
+    if (period === "month") {
+      const weekEnd = shiftActivityDay(day, 6);
+      last = weekEnd < end ? weekEnd : end;
+      label = `${Number(day.slice(8))}–${Number(last.slice(8))}日`;
+      if (day === last) label = `${Number(day.slice(8))}日`;
+    } else if (period !== "week") {
+      last = activityPeriodRange(day, "month").end;
+      label = `${Number(day.slice(5, 7))}月`;
+    }
+    buckets.push({ start: day, end: last, label });
+    day = shiftActivityDay(last, 1);
+  }
+  return buckets;
+}
+
+function renderActivityBoardCalendar(days, today) {
+  const month = activityBoard.calendarMonth;
+  const start = month + "-01";
+  const { end } = activityPeriodRange(start, "month");
+  const date = new Date(start + "T00:00:00Z");
+  const focusedDay = document.activeElement?.dataset.activityDate;
+  const cells = Array.from({ length: (date.getUTCDay() + 6) % 7 }, () => document.createElement("span"));
+  for (let day = start; day <= end; day = shiftActivityDay(day, 1)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.activityDate = day;
+    button.textContent = Number(day.slice(8));
+    button.disabled = day > today;
+    button.setAttribute("aria-label", day + (days.has(day) ? "，有记录" : ""));
+    button.setAttribute("aria-pressed", String(day === activityBoard.day));
+    if (days.has(day)) button.dataset.progress = "partial";
+    if (day === today) button.setAttribute("aria-current", "date");
+    button.addEventListener("click", () => selectActivityBoardDay(day));
+    cells.push(button);
+  }
+  el["activity-board-calendar-month"].textContent = calendarMonthFormat.format(date);
+  el["activity-board-month-next"].disabled = month >= today.slice(0, 7);
+  el["activity-board-calendar-days"].replaceChildren(...cells);
+  if (focusedDay) cells.find(cell => cell.dataset.activityDate === focusedDay)?.focus();
+}
+
+function renderActivityBoardTrend(range, days, field) {
+  const [metric, label, unit] = field;
+  el["activity-board-trend-title"].textContent = `${label}趋势`;
+  el["activity-board-trend-unit"].textContent = `单位 ${unit}`;
+  const buckets = activityTrendBuckets(range, activityBoard.period).map(bucket => ({
+    ...bucket, value: activityBoardSum(days.filter(day => day.date >= bucket.start && day.date <= bucket.end), metric),
+  }));
+  const bars = el["activity-board-bars"];
+  const max = Math.max(...buckets.map(bucket => bucket.value));
+  if (!max) {
+    const empty = document.createElement("p");
+    empty.className = "activity-board-empty";
+    empty.textContent = "该项目在这个周期暂无记录。";
+    bars.replaceChildren(empty);
+    return;
+  }
+  const chart = document.createElement("ul");
+  chart.className = "activity-board-chart";
+  chart.style.setProperty("--buckets", buckets.length);
+  for (const { value, label } of buckets) {
+    const column = document.createElement("li");
+    const plot = document.createElement("span");
+    plot.className = "activity-board-plot";
+    const number = document.createElement("strong");
+    number.textContent = value ? activityNumber.format(value) : "—";
+    const bar = document.createElement("i");
+    bar.style.height = value ? `max(2px, ${value / max * 100}%)` : "0";
+    bar.setAttribute("aria-hidden", "true");
+    const tick = document.createElement("span");
+    tick.className = "activity-board-tick";
+    tick.textContent = label;
+    plot.append(number, bar);
+    column.append(plot, tick);
+    chart.append(column);
+  }
+  bars.replaceChildren(chart);
+}
+
+function renderActivityBoardRecords(days, daily, config) {
+  const list = el["activity-board-records"];
+  el["activity-board-records-title"].textContent = daily ? "当天记录" : "按日期查看记录";
+  if (!days.length) {
+    const empty = document.createElement("p");
+    empty.className = "activity-board-empty";
+    empty.textContent = daily ? `这一天暂无${config.label}记录。` : `这个周期暂无${config.label}记录。`;
+    list.replaceChildren(empty);
+    return;
+  }
+  if (daily) {
+    list.replaceChildren(...days[0].records.map((record, index) => {
+      const row = document.createElement("div");
+      row.className = "activity-board-record";
+      const title = document.createElement("strong");
+      title.textContent = `第 ${index + 1} 笔`;
+      const details = document.createElement("span");
+      details.textContent = record.map(({ label, value, unit }) =>
+        `${label} ${activityNumber.format(value)} ${unit}`).join(" · ");
+      row.append(title, details);
+      return row;
+    }));
+    return;
+  }
+  list.replaceChildren(...days.map(({ date, records }) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "activity-board-record";
+    const label = document.createElement("strong");
+    label.textContent = formatDate(date);
+    const count = document.createElement("span");
+    count.textContent = `${records.length} 笔 ›`;
+    row.append(label, count);
+    row.addEventListener("click", () => {
+      activityBoard.period = "day";
+      setActivityBoardCalendar(false);
+      selectActivityBoardDay(date);
+      el["activity-board-records-title"].focus();
+    });
+    return row;
+  }));
+}
+
+function renderActivityBoard() {
+  const today = todayKey();
+  const { type, day, period, metrics } = activityBoard;
+  const config = activityRecordTypes[type];
+  const range = activityPeriodRange(day, period);
+  const daily = period === "day";
+  const allDays = activityRecordDays(state.entries, config, today);
+  const days = [...allDays.values()].filter(day => day.date >= range.start && day.date <= range.end)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const count = days.reduce((sum, day) => sum + day.records.length, 0);
+  const totals = config.fields.map(([id]) => activityBoardSum(days, id));
+  const selected = metrics[type] ?? config.fields[Math.max(0, totals.findIndex(value => value > 0))][0];
+  for (const button of activityBoardTypes) button.setAttribute("aria-pressed", String(button.dataset.activityType === type));
+  for (const button of activityBoardPeriods) button.setAttribute("aria-pressed", String(button.dataset.activityPeriod === period));
+  el["activity-board-range"].textContent = range.label;
+  el["activity-board-calendar-toggle"].setAttribute("aria-label", `选择日期，${range.label}`);
+  el["activity-board-next"].disabled = range.end >= today;
+  el["activity-board-total-title"].textContent = activityPeriods[period].total;
+  el["activity-board-count"].textContent = daily ? `${count} 笔记录` : `${count} 笔记录 · ${days.length} 个${config.label}日`;
+  const focusedMetric = document.activeElement?.dataset.activityMetric;
+  const cards = config.fields.map(([id, label, unit], index) => {
+    const card = document.createElement(daily ? "div" : "button");
+    card.className = "activity-board-metric";
+    if (!daily) {
+      card.type = "button";
+      card.dataset.activityMetric = id;
+      card.setAttribute("aria-pressed", String(id === selected));
+      card.addEventListener("click", () => {
+        metrics[type] = id;
+        renderActivityBoard();
+      });
+    }
+    const name = document.createElement("span");
+    name.textContent = label;
+    const value = document.createElement("strong");
+    value.textContent = totals[index] ? activityNumber.format(totals[index]) : "—";
+    const suffix = document.createElement("small");
+    suffix.textContent = totals[index] ? unit : "";
+    card.append(name, value, suffix);
+    return card;
+  });
+  el["activity-board-metrics"].replaceChildren(...cards);
+  if (focusedMetric) cards.find(card => card.dataset.activityMetric === focusedMetric)?.focus();
+  el["activity-board-trend"].hidden = daily || !days.length;
+  if (!el["activity-board-trend"].hidden) {
+    renderActivityBoardTrend(range, days, config.fields.find(([id]) => id === selected));
+  }
+  renderActivityBoardRecords(days, daily, config);
+  if (!el["activity-board-calendar"].hidden) renderActivityBoardCalendar(allDays, today);
+}
+
+function selectActivityBoardDay(day) {
+  activityBoard.day = day;
+  activityBoard.calendarMonth = day.slice(0, 7);
+  renderActivityBoard();
+}
+
+function setActivityBoardCalendar(open) {
+  el["activity-board-calendar"].hidden = !open;
+  el["activity-board-calendar-toggle"].setAttribute("aria-expanded", String(open));
+}
+
+el["activity-board"].addEventListener("pointermove", event => {
+  if (event.pointerType !== "mouse") return;
+  const { clientX: x, clientY: y } = event;
+  for (const area of activityBoardScrollAreas) {
+    const { left, right, top, bottom } = area.getBoundingClientRect();
+    const inside = x >= left && x <= right && y >= top && y <= bottom;
+    const vertical = area.scrollHeight > area.clientHeight && right - x <= (area.offsetWidth - area.clientWidth || 8);
+    const horizontal = area.scrollWidth > area.clientWidth && bottom - y <= (area.offsetHeight - area.clientHeight || 8);
+    area.classList.toggle("scrollbar-hover", inside && (vertical || horizontal));
+  }
+});
+el["activity-board"].addEventListener("pointerleave", () => {
+  for (const area of activityBoardScrollAreas) area.classList.remove("scrollbar-hover");
+});
+for (const area of activityBoardScrollAreas) {
+  let hideScrollbar;
+  area.addEventListener("scroll", () => {
+    area.classList.add("is-scrolling");
+    clearTimeout(hideScrollbar);
+    hideScrollbar = setTimeout(() => area.classList.remove("is-scrolling"), 500);
+  });
+  el["activity-board"].addEventListener("close", () => {
+    clearTimeout(hideScrollbar);
+    area.classList.remove("scrollbar-hover", "is-scrolling");
+  });
+}
+
+el["open-activity-board"].addEventListener("click", () => {
+  setActivityBoardCalendar(false);
+  activityBoard.period = "day";
+  selectActivityBoardDay(actionEditorDay());
+  el["activity-board"].showModal();
+  el["activity-board-title"].focus();
+});
+for (const button of activityBoardTypes) {
+  button.addEventListener("click", () => {
+    activityBoard.type = button.dataset.activityType;
+    renderActivityBoard();
+  });
+}
+for (const button of activityBoardPeriods) {
+  button.addEventListener("click", () => {
+    activityBoard.period = button.dataset.activityPeriod;
+    setActivityBoardCalendar(false);
+    renderActivityBoard();
+  });
+}
+for (const [id, step] of [["activity-board-prev", -1], ["activity-board-next", 1]]) {
+  el[id].addEventListener("click", () => {
+    const { start, end } = activityPeriodRange(activityBoard.day, activityBoard.period);
+    selectActivityBoardDay(shiftActivityDay(step < 0 ? start : end, step));
+    if (el[id].disabled) el["activity-board-calendar-toggle"].focus();
+  });
+}
+el["activity-board-calendar-toggle"].addEventListener("click", () => {
+  const open = el["activity-board-calendar"].hidden;
+  setActivityBoardCalendar(open);
+  if (!open) return;
+  activityBoard.calendarMonth = activityBoard.day.slice(0, 7);
+  renderActivityBoard();
+  el["activity-board-calendar-days"].querySelector('[aria-pressed="true"]')?.focus();
+});
+for (const [id, step] of [["activity-board-month-prev", -1], ["activity-board-month-next", 1]]) {
+  el[id].addEventListener("click", () => {
+    const month = new Date(activityBoard.calendarMonth + "-01T00:00:00Z");
+    month.setUTCMonth(month.getUTCMonth() + step);
+    activityBoard.calendarMonth = month.toISOString().slice(0, 7);
+    const today = todayKey();
+    renderActivityBoardCalendar(activityRecordDays(state.entries, activityRecordTypes[activityBoard.type], today), today);
+    if (el[id].disabled) el["activity-board-month-prev"].focus();
+  });
+}
+el["activity-board-today"].addEventListener("click", () => selectActivityBoardDay(todayKey()));
+
+function renderWorkoutFields(config, entry) {
+  el["workout-fields"].replaceChildren();
+  for (const [id, name, unit] of config.fields) {
+    const label = document.createElement("label");
+    label.htmlFor = `workout-${id}`;
+    label.append(document.createTextNode(name));
+    const value = document.createElement("span");
+    value.className = "workout-field-value";
+    const input = document.createElement("input");
+    input.id = `workout-${id}`;
+    input.name = id;
+    input.type = "number";
+    input.min = "0";
+    input.step = unit === "min" ? "any" : "1";
+    input.inputMode = unit === "min" ? "decimal" : "numeric";
+    input.value = entry?.[config.key]?.[id] ?? "";
+    value.append(input, document.createTextNode(unit));
+    label.append(value);
+    el["workout-fields"].append(label);
+  }
 }
 
 function openWorkout(habit, date, status, entry) {
-  workoutContext = { kind: habit.id, date, status, saveKey: activeForestSave().key(), entry: JSON.stringify(entry) };
-  el["workout-title"].textContent = `${habit.name} · 训练记录`;
+  const config = activityRecordConfig(habit);
+  workoutContext = { kind: habit.id, field: config.key, date, status, saveKey: activeForestSave().key(), entry: JSON.stringify(entry) };
+  el["workout-title"].textContent = `${habit.name} · ${config.label}记录`;
+  el["workout-guide"].textContent = `填写本次${config.label}${config.key === "workout" ? "次数" : "数值"}，没做的项目可留空。`;
   el["workout-date"].textContent = `${date} · ${repeatLabel(habit)}`;
   el["workout-status"].textContent = "";
   el["workout-save"].textContent = entry ? "保存修改" : "保存并完成";
   el["workout-undo"].hidden = !entry;
-  for (const [id] of workoutExercises) el["workout-form"].elements.namedItem(id).value = entry?.workout?.[id] ?? "";
+  renderWorkoutFields(config, entry);
   el["workout-dialog"].showModal();
 }
 
@@ -2268,37 +2660,38 @@ el["workout-form"].addEventListener("submit", event => {
   if (!el["workout-dialog"].open) return;
   const context = workoutContext;
   const habit = state.habits.find(item => item.id === context?.kind);
+  const config = habit && activityRecordConfig(habit);
   const entry = state.entries.find(item => item.kind === context?.kind && item.date === context?.date && !item.weekly);
-  if (!habit || context.saveKey !== activeForestSave().key() || JSON.stringify(entry) !== context.entry || !actionAvailableOn(habit, context.date, todayKey())) {
+  if (!config || config.key !== context.field || context.saveKey !== activeForestSave().key() || JSON.stringify(entry) !== context.entry || !actionAvailableOn(habit, context.date, todayKey())) {
     el["workout-status"].textContent = "行动或记录已变化，请关闭窗口后重新打开。";
     return;
   }
   const workout = {};
-  for (const [id] of workoutExercises) {
+  for (const [id, , unit] of config.fields) {
     const input = el["workout-form"].elements.namedItem(id);
     const value = input.value === "" ? 0 : input.valueAsNumber;
-    if (!Number.isSafeInteger(value) || value < 0) {
-      el["workout-status"].textContent = "次数请填写大于等于 0 的整数。";
+    if (!Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER || (unit !== "min" && !Number.isSafeInteger(value))) {
+      el["workout-status"].textContent = config.key === "workout" ? "次数请填写大于等于 0 的整数。" : "首数请填写非负整数，分钟可填非负小数。";
       return;
     }
     if (value > 0) workout[id] = value;
   }
   if (!Object.keys(workout).length) {
-    el["workout-status"].textContent = "请至少填写一个项目的训练次数。";
+    el["workout-status"].textContent = `请至少填写一个项目的${config.label}数值。`;
     return;
   }
   if (entry) {
-    const previous = entry.workout;
-    entry.workout = workout;
+    const previous = entry[config.key];
+    entry[config.key] = workout;
     if (!saveState()) {
-      if (previous === undefined) delete entry.workout;
-      else entry.workout = previous;
-      el["workout-status"].textContent = "浏览器无法保存训练记录，请重试。";
+      if (previous === undefined) delete entry[config.key];
+      else entry[config.key] = previous;
+      el["workout-status"].textContent = `浏览器无法保存${config.label}记录，请重试。`;
       return;
     }
     updateControls();
-    context.status.textContent = "当天训练记录已更新。";
-  } else if (!record(habit, context.date, el["workout-status"], workout)) {
+    context.status.textContent = `当天${config.label}记录已更新。`;
+  } else if (!record(habit, context.date, el["workout-status"], { [config.key]: workout })) {
     return;
   } else {
     context.status.textContent = el["workout-status"].textContent;
@@ -2328,7 +2721,8 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
   const habit = state.habits.find(item => item.id === kind);
   if (!habit || date > day || !actionAvailableOn(habit, date, day)) return;
   const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind && !entry.weekly);
-  if (!skipWorkout && isWorkoutHabit(habit) && (date === day || state.entries[index]?.workout)) {
+  const config = activityRecordConfig(habit);
+  if (!skipWorkout && config && (date === day || state.entries[index]?.[config.key])) {
     openWorkout(habit, date, status, state.entries[index]);
     return;
   }
@@ -2391,10 +2785,10 @@ function addActionEntry(habit, date, source, snapshot = state) {
   return { reward: actionReward(habit), award, weekly, entry };
 }
 
-function record(habit, date, status, workout) {
+function record(habit, date, status, details) {
   const previousLength = state.entries.length;
   const { reward, award, weekly, entry } = addActionEntry(habit, date);
-  if (workout) entry.workout = workout;
+  if (details) Object.assign(entry, details);
   if (!saveState()) {
     state.entries.length = previousLength;
     status.textContent = "浏览器无法保存，标记完成失败。";
@@ -2695,6 +3089,7 @@ function showJournal(tree) {
   el.journal.dataset.view = tree ? "crop" : "history";
   el["journal-kicker"].hidden = !tree;
   el["journal-records-title"].textContent = tree ? "行动来源" : "生命力觉察";
+  el["open-today-notes"].hidden = Boolean(tree);
   el["fertilizer-panel"].hidden = !tree;
   el["fertilizer-status"].textContent = "";
   if (tree) {
@@ -2702,7 +3097,7 @@ function showJournal(tree) {
     el["journal-title"].textContent = plantAppearance(tree, now).name;
     updateJournalGrowth(tree, now);
   } else {
-    el["journal-title"].textContent = "森林手记";
+    el["journal-title"].textContent = "庄园手记";
     el["journal-cover-art"].src = forestAssetUrl("./assets/forest-journal.webp");
   }
   updateJournalRecords(tree);
@@ -3730,7 +4125,6 @@ el.forest.addEventListener("contextmenu", event => {
   event.preventDefault();
   selectTool(activeTool);
 });
-el.cabin.addEventListener("click", showActions);
 el["open-actions"].addEventListener("click", () => {
   showActions();
   playEffect(journalOpenSound);
@@ -3854,6 +4248,7 @@ for (const [id, fertilizer] of fertilizers) {
 }
 function refreshSavedForest() {
   state = readState(activeForestSave());
+  if (typeof refreshTodayNotes === "function") refreshTodayNotes();
   renderActionCategories();
   renderHabits(actionEditorDay());
   renderPlots();

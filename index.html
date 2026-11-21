@@ -7,8 +7,10 @@
   <title>生命森林</title>
   <link rel="stylesheet" href="./forest.css">
   <link rel="stylesheet" href="./ranch.css">
+  <link rel="preload" href="./assets/activity-board-art.png" as="image">
   <script src="./save-sync.js" defer></script>
   <script src="./forest.js" defer></script>
+  <script src="./today-notes.js" defer></script>
   <script src="./experiment-dog.js" defer></script>
   <script src="./account.js" defer></script>
   <script src="./ranch.js" defer></script>
@@ -116,7 +118,7 @@
             </div>
           </div>
           <div class="orbs" id="orbs" role="group" aria-label="家门口的待收生命力"></div>
-          <button class="cabin" id="cabin" type="button" aria-label="打开木屋里的今日行动"></button>
+          <button class="cabin" id="cabin" type="button" aria-label="打开木屋里的今日事" aria-haspopup="dialog"></button>
         </div>
       </div>
     </div>
@@ -181,7 +183,7 @@
         </button>
         <button class="hud-shortcut" id="open-journal" type="button">
           <img src="./assets/forest-journal.webp" alt="" width="256" height="256">
-          <span>森林手记</span>
+          <span>庄园手记</span>
         </button>
       </div>
       <nav class="experiment-navigation" id="experiment-navigation" aria-label="实验田导航" hidden>
@@ -435,7 +437,10 @@
           <div class="action-total" id="action-total-pill"><i class="action-art action-spark" aria-hidden="true"></i><span id="action-total-copy"><span id="action-total-label">今日还可获得</span><br>生命力 <strong id="action-total">+0</strong></span><span id="action-total-done" hidden></span></div>
         </div>
         <div class="action-category-bar">
-          <span class="action-art action-category-title" role="img" aria-label="行动分类"></span>
+          <div class="action-category-navigation">
+            <span class="action-art action-category-title" role="img" aria-label="行动分类"></span>
+            <button id="action-category-next" type="button" aria-controls="action-categories">下一页 ›</button>
+          </div>
           <div id="action-categories" class="action-categories" role="group" aria-label="行动分类"></div>
         </div>
         <div class="action-list">
@@ -458,6 +463,7 @@
           <button class="action-add" id="add-action-category" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#plus"/></svg>分类</button>
           <button class="action-edit-toggle" id="toggle-action-edit" type="button" aria-pressed="false" aria-controls="habits"><svg aria-hidden="true"><use href="#edit-action"/></svg>编辑</button>
           <button class="action-rank-open" id="open-leaderboard" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#rank"/></svg>排行榜</button>
+          <button class="action-rank-open" id="open-activity-board" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#action-grid"/></svg>数据板</button>
         </div>
         <p class="guide" id="action-status" role="status"></p>
         <p class="storage visually-hidden" id="storage-note" role="status">行动、植物与库存保存在此浏览器</p>
@@ -486,6 +492,71 @@
         <div id="action-calendar-habits" class="action-calendar-habits"></div>
         <p id="action-calendar-status" class="guide" role="status"></p>
       </section>
+    </div>
+  </dialog>
+  <dialog id="activity-board" aria-labelledby="activity-board-title">
+    <h2 id="activity-board-title" class="visually-hidden" tabindex="-1">庄园数据板</h2>
+    <span class="activity-board-art activity-board-art-top" aria-hidden="true"></span>
+    <span class="activity-board-art activity-board-art-bottom" aria-hidden="true"></span>
+    <span class="activity-board-rail activity-board-rail-left" aria-hidden="true"></span>
+    <span class="activity-board-rail activity-board-rail-right" aria-hidden="true"></span>
+    <form class="activity-board-close" method="dialog"><button type="submit" aria-label="关闭数据板"></button></form>
+    <div class="activity-board-body">
+      <div class="activity-board-types" role="group" aria-label="记录类型">
+        <button type="button" data-activity-type="guitar" aria-pressed="true"><span class="activity-board-kind-icon" aria-hidden="true"></span>吉他多种玩法</button>
+        <button type="button" data-activity-type="workout" aria-pressed="false"><span class="activity-board-kind-icon" aria-hidden="true"></span>小健身</button>
+      </div>
+      <div class="activity-board-toolbar">
+        <div class="activity-board-periods" role="group" aria-label="统计周期">
+          <button type="button" data-activity-period="day" aria-pressed="true"><svg aria-hidden="true"><use href="#calendar"/></svg>日</button>
+          <button type="button" data-activity-period="week" aria-pressed="false">周</button>
+          <button type="button" data-activity-period="month" aria-pressed="false">月</button>
+          <button type="button" data-activity-period="quarter" aria-pressed="false">季</button>
+          <button type="button" data-activity-period="year" aria-pressed="false">年</button>
+        </div>
+        <div class="activity-board-date-nav">
+          <button id="activity-board-prev" class="activity-board-arrow" type="button" aria-label="上一个周期">‹</button>
+          <button id="activity-board-calendar-toggle" type="button" aria-expanded="false" aria-controls="activity-board-calendar">
+            <svg aria-hidden="true"><use href="#calendar"/></svg><strong id="activity-board-range" aria-live="polite"></strong>
+          </button>
+          <button id="activity-board-next" class="activity-board-arrow" type="button" aria-label="下一个周期">›</button>
+        </div>
+      </div>
+      <div class="activity-board-layout">
+        <section id="activity-board-calendar" class="action-calendar-sheet" aria-label="选择日期" hidden>
+          <div class="action-calendar-nav">
+            <button id="activity-board-month-prev" type="button" aria-label="上个月">‹</button>
+            <strong id="activity-board-calendar-month" aria-live="polite"></strong>
+            <button id="activity-board-month-next" type="button" aria-label="下个月">›</button>
+          </div>
+          <div class="action-calendar-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+          <div id="activity-board-calendar-days" class="action-calendar-days" role="group" aria-label="日期"></div>
+          <div class="activity-board-calendar-footer">
+            <span><i aria-hidden="true"></i>有记录</span>
+            <button id="activity-board-today" type="button">回到今天</button>
+          </div>
+        </section>
+        <div class="activity-board-content">
+          <section class="activity-board-sheet" aria-labelledby="activity-board-total-title">
+            <div class="activity-board-section-heading">
+              <h3 class="activity-board-tag" id="activity-board-total-title"></h3>
+              <span class="activity-board-tally"><svg aria-hidden="true"><use href="#calendar"/></svg><span id="activity-board-count" aria-live="polite"></span></span>
+            </div>
+            <div id="activity-board-metrics" class="activity-board-metrics"></div>
+          </section>
+          <section id="activity-board-trend" class="activity-board-sheet" aria-labelledby="activity-board-trend-title" hidden>
+            <div class="activity-board-section-heading">
+              <h3 class="activity-board-tag" id="activity-board-trend-title"></h3>
+              <span id="activity-board-trend-unit"></span>
+            </div>
+            <div id="activity-board-bars"></div>
+          </section>
+          <section class="activity-board-sheet" aria-labelledby="activity-board-records-title">
+            <h3 class="activity-board-tag" id="activity-board-records-title" tabindex="-1"></h3>
+            <div id="activity-board-records"></div>
+          </section>
+        </div>
+      </div>
     </div>
   </dialog>
   <dialog id="leaderboard-dialog" aria-labelledby="leaderboard-title">
@@ -546,7 +617,7 @@
     </div>
     <p class="guide" id="workout-date"></p>
     <form class="action-editor-form" id="workout-form">
-      <p class="guide">填写本次训练次数，没做的项目可留空。</p>
+      <p class="guide" id="workout-guide">填写本次训练次数，没做的项目可留空。</p>
       <div class="workout-fields" id="workout-fields"></div>
       <p class="guide" id="workout-status" role="status"></p>
       <div class="action-editor-buttons">
@@ -578,6 +649,10 @@
             <option value="once">仅今天</option>
           </select>
         </div>
+      </div>
+      <div id="action-once-row" hidden>
+        <label for="action-only-date">限定日期</label>
+        <input id="action-only-date" type="date" required disabled>
       </div>
       <div class="action-weekly-row" id="action-weekly-row" hidden>
         <label for="action-weekly-target">每周目标次数</label>
@@ -687,7 +762,7 @@
     <div class="journal-book">
       <div class="journal-front">
         <img class="journal-cover-art" id="journal-cover-art" src="./assets/forest-journal.webp" alt="" width="256" height="256">
-        <h2 id="journal-title">森林手记</h2>
+        <h2 id="journal-title">庄园手记</h2>
         <p id="journal-kicker" hidden></p>
         <section class="fertilizer-panel" id="fertilizer-panel" aria-label="植物生长" hidden>
           <p id="growth-progress-label"></p>
@@ -705,13 +780,42 @@
         <header class="journal-page-heading">
           <h3 id="journal-records-title">生命力觉察</h3>
           <span id="journal-count" hidden></span>
+          <button id="open-today-notes" class="journal-today-button" type="button">今日事 <span aria-hidden="true">✎</span></button>
         </header>
         <div id="journal-content" class="journal-content"></div>
       </section>
       <form class="journal-close" method="dialog">
-        <button type="submit" aria-label="关闭森林手记" autofocus><svg aria-hidden="true"><use href="#close"/></svg></button>
+        <button type="submit" aria-label="关闭庄园手记" autofocus><svg aria-hidden="true"><use href="#close"/></svg></button>
       </form>
     </div>
+  </dialog>
+  <dialog id="today-notes" aria-labelledby="today-notes-title">
+    <header class="notes-heading">
+      <div><p>庄园手记 · 留住生活的枝叶</p><h2 id="today-notes-title">今日事</h2></div>
+      <button id="notes-close" class="dialog-close" type="button" aria-label="关闭今日事"><svg aria-hidden="true"><use href="#close"/></svg></button>
+    </header>
+    <section class="notes-paper" aria-label="今日事笔记本">
+      <div class="notes-toolbar" role="group" aria-label="笔记工具">
+        <time id="notes-date"></time><span id="notes-count">0 / 10000</span>
+        <button id="notes-find" type="button" aria-label="查找本页（Ctrl+F）" aria-expanded="false">⌕ <span>查找</span></button>
+        <button id="notes-check" type="button" aria-label="在光标处插入勾号">✅</button>
+        <button id="notes-new" class="notes-new-button" type="button">＋ 新建一页</button>
+        <button id="notes-history-toggle" type="button" aria-expanded="false" aria-controls="notes-history">历史 1</button>
+      </div>
+      <div class="notes-writing">
+        <textarea id="notes-editor" class="notes-text" maxlength="10000" aria-label="今日事内容" spellcheck="false" placeholder="写下今天的安排、灵感，或那些想记住的小事……&#10;&#10;内容自动保存，不会每天清空。想开启新的一页时，点击「新建一页」。"></textarea>
+        <div id="notes-highlights" class="notes-text" aria-hidden="true" hidden></div>
+        <div id="notes-search" role="search" aria-label="查找本页" hidden>
+          <input id="notes-query" type="search" placeholder="查找本页" aria-label="查找文字" autocomplete="off">
+          <output id="notes-match-count" aria-live="polite"></output>
+          <button id="notes-prev" type="button" aria-label="上一个匹配">↑</button>
+          <button id="notes-next" type="button" aria-label="下一个匹配">↓</button>
+          <button id="notes-search-close" type="button" aria-label="关闭查找">×</button>
+        </div>
+      </div>
+      <footer class="notes-footer"><span id="notes-save-status" role="status">自动保存已开启</span><span id="notes-remaining"></span><span>纯文本 · 内容随庄园账号同步</span></footer>
+      <section id="notes-history" aria-label="历史页面" hidden><p>点选一页继续书写，旧内容都会保留。</p><div id="notes-pages"></div></section>
+    </section>
   </dialog>
   <div class="dog-menu" id="dog-menu" role="menu" aria-label="和小狗互动" hidden>
     <p class="dog-menu-title">小狗</p>

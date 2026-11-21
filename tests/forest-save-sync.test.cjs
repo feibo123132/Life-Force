@@ -81,6 +81,31 @@ test("a stale device cannot erase a newer version and keeps both saves on confli
   assert.equal(JSON.parse(storage.getItem(phone.key() + ":backup")).snapshot.player.name, "离线改过");
 });
 
+test("journal notes keep all pages across device sync, reload and account switches", async () => {
+  const { handle } = makeCloud();
+  const { sync: desktop } = makeClient();
+  const { sync: phone, storage } = makeClient();
+  const now = new Date().toISOString();
+  const todayNotes = { activePageId: "new", pages: [
+    { id: "new", content: "今日安排\n✅ 完成\n<原样保留>", createdAt: now, updatedAt: now },
+    { id: "old", content: "往日记录".repeat(2500), createdAt: now, updatedAt: now },
+  ] };
+  desktop.connect("owner", handle("owner"));
+  desktop.write({ ...snapshot("笔记主人"), todayNotes });
+  await desktop.sync();
+  phone.connect("owner", handle("owner"));
+  await phone.sync();
+  assert.deepEqual(phone.read().todayNotes, todayNotes);
+  const { sync: reloaded } = makeClient(storage);
+  reloaded.connect("owner", handle("owner"));
+  assert.deepEqual(reloaded.read().todayNotes, todayNotes);
+  reloaded.connect("another", handle("another"));
+  await reloaded.sync();
+  assert.equal(reloaded.read(), null);
+  reloaded.connect("owner", handle("owner"));
+  assert.deepEqual(reloaded.read().todayNotes, todayNotes);
+});
+
 test("a late response cannot overwrite edits made while uploading", async () => {
   const { handle, records } = makeCloud();
   const { sync } = makeClient();
