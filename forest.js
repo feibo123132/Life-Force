@@ -12,7 +12,7 @@ const defaultHabits = {
 const initialHabits = () => Object.entries(defaultHabits).map(([id, { name, description }]) => ({ id, name, description }));
 const defaultActionCategories = new Map([
   ["all", "全部"], ["study", "学习"], ["work", "工作"],
-  ["exercise", "锻炼"], ["music", "音乐"], ["inspiration", "灵感"], ["friends", "友人"], ["food", "美食"], ["finance", "理财"], ["other", "其它"],
+  ["exercise", "锻炼"], ["music", "音乐"], ["inspiration", "灵感"], ["friends", "友人"], ["food", "美食"], ["finance", "理财"], ["value", "价值"], ["other", "其它"],
 ]);
 const legacyDailyActionGoal = 5;
 const dailyActionBonus = "daily-action-bonus";
@@ -187,6 +187,7 @@ let selectedPlot;
 let selectedPlant;
 let journalPlot;
 let activeTool;
+let sowing;
 let pendingDig;
 let previewPlot;
 let previewOrb;
@@ -1458,12 +1459,14 @@ let actionCategories;
 
 function habitCategory(habit) {
   const category = habit?.category;
-  return category !== "all" && actionCategories.has(category) ? category : "other";
+  if (category !== "all" && actionCategories.has(category)) return category;
+  if (state.customActionCategories.some(item => item.id === category && item.label.trim() === "价值")) return "value";
+  return "other";
 }
 
 function actionCategoryArtwork(category) {
   const label = actionCategories.get(category)?.trim();
-  const artwork = { 全部: "all", 学习: "study", 工作: "work", 锻炼: "exercise", 音乐: "music", 灵感: "inspiration", 友人: "friends", 美食: "food", 理财: "finance", 摄影: "photography", 注意: "warning" }[label] ?? "other";
+  const artwork = { 全部: "all", 学习: "study", 工作: "work", 锻炼: "exercise", 音乐: "music", 灵感: "inspiration", 友人: "friends", 美食: "food", 理财: "finance", 价值: "value", 摄影: "photography", 注意: "warning" }[label] ?? "other";
   const image = document.createElement("img");
   image.src = forestAssetUrl(`./assets/action-icons/${artwork}.webp`);
   image.alt = "";
@@ -1475,19 +1478,19 @@ function actionCategoryLabel(label) {
   return label.replace(/^⚠\uFE0F?\s*(?=注意$)/u, "");
 }
 
-// 内置分类排在自定义分类前面，但「理财」习惯上要夹在「摄影」和「注意」之间。
+// 「理财」沿用原来的排序位置，「价值」跟在它后面。
 function actionCategoryOrder(categories) {
   const entries = [...categories];
   const finance = entries.findIndex(([id]) => id === "finance");
   if (finance < 0) return entries;
-  const [money] = entries.splice(finance, 1);
+  const group = entries.splice(finance, entries[finance + 1]?.[0] === "value" ? 2 : 1);
   const note = entries.findIndex(([, label]) => label === "注意");
   if (note >= 0) {
-    entries.splice(note, 0, money);
+    entries.splice(note, 0, ...group);
     return entries;
   }
   const shot = entries.findIndex(([, label]) => label.trim() === "摄影");
-  entries.splice(shot >= 0 ? shot + 1 : finance, 0, money);
+  entries.splice(shot >= 0 ? shot + 1 : finance, 0, ...group);
   return entries;
 }
 
@@ -1497,10 +1500,11 @@ function actionCategoryPages() {
   const primary = categories.filter(([, label]) => !secondaryLabels.includes(label));
   const secondary = categories.filter(([, label]) => secondaryLabels.includes(label))
     .sort((left, right) => secondaryLabels.indexOf(left[1]) - secondaryLabels.indexOf(right[1]));
-  // Keep each page to two rows; “全部” stays available on every page.
-  const pages = [primary.slice(0, 9)];
-  const remaining = [...secondary, ...primary.slice(9)];
-  for (let index = 0; index < remaining.length; index += 9) pages.push(remaining.slice(index, index + 9));
+  // “全部” stays on every page. Keep 理财 and 价值 together at page boundaries.
+  const takePage = items => items.splice(0, items[10]?.[0] === "finance" && items[11]?.[0] === "value" ? 10 : 11);
+  const pages = [takePage(primary)];
+  const remaining = [...secondary, ...primary];
+  while (remaining.length) pages.push(takePage(remaining));
   return pages;
 }
 
@@ -1526,7 +1530,9 @@ el["action-category-next"].addEventListener("click", () => {
 function renderActionCategories() {
   actionCategories = new Map(defaultActionCategories);
   actionCategories.delete("other");
-  for (const { id, label } of state.customActionCategories) actionCategories.set(id, actionCategoryLabel(label));
+  for (const { id, label } of state.customActionCategories) {
+    if (label.trim() !== "价值") actionCategories.set(id, actionCategoryLabel(label));
+  }
   actionCategories.set("other", defaultActionCategories.get("other"));
   if (!actionCategories.has(actionFilter)) actionFilter = "all";
   const tabs = el["action-categories"];
@@ -1573,11 +1579,31 @@ function filterHabits() {
   el["action-empty"].textContent = habitButtons.size ? "这个分类还没有行动。" : "还没有行动，点击新增行动开始记录。";
 }
 
+const actionPraiseQualities = ["优秀", "精良", "稀有", "传奇"];
+
+function actionPraiseTier(score) {
+  return Number.isInteger(score) && score >= 80 && score <= 100
+    ? Math.min(3, Math.floor((score - 80) / 5)) : -1;
+}
+
 function actionPraiseLabel(score) {
-  if (!Number.isInteger(score) || score < 80 || score > 100) return "";
-  const qualities = ["优秀", "精良", "稀有", "传奇"];
-  const tier = Math.min(3, Math.floor((score - 80) / 5));
-  return `${qualities[tier]} · ${score} 分`;
+  const tier = actionPraiseTier(score);
+  return tier < 0 ? "" : `${actionPraiseQualities[tier]} · ${score} 分`;
+}
+
+function actionPhoto(habit) {
+  const photo = habit?.photo;
+  return typeof photo === "string" && photo.startsWith("data:image/jpeg;base64,") ? photo : undefined;
+}
+
+let actionPhotoSaveKey;
+
+function openActionPhoto(title, photo, description) {
+  actionPhotoSaveKey = activeForestSave().key();
+  el["action-photo-title"].textContent = title;
+  el["action-photo-image"].src = photo;
+  el["action-photo-image"].alt = description;
+  el["action-photo-dialog"].showModal();
 }
 
 function renderHabits(day = todayKey()) {
@@ -1598,6 +1624,7 @@ function renderHabits(day = todayKey()) {
     button.type = "button";
     button.className = "habit";
     button.dataset.kind = habit.id;
+    if (isAiAdventure(habit)) button.setAttribute("aria-haspopup", "dialog");
     const artwork = document.createElement("span");
     artwork.className = "habit-art";
     artwork.append(actionCategoryArtwork(category));
@@ -1651,12 +1678,33 @@ function renderHabits(day = todayKey()) {
     edit.setAttribute("aria-label", `编辑${habit.name}`);
     edit.innerHTML = icon("edit-action");
     edit.addEventListener("click", () => openActionEditor(habit.id));
-    row.append(button, edit);
+    row.append(button);
+    const photo = actionPhoto(habit);
+    if (photo) {
+      const view = document.createElement("button");
+      view.type = "button";
+      view.className = "action-photo-open";
+      view.title = "查看照片";
+      view.setAttribute("aria-label", `查看「${habit.name}」的照片`);
+      view.setAttribute("aria-haspopup", "dialog");
+      const thumbnail = document.createElement("img");
+      thumbnail.src = photo;
+      thumbnail.alt = "";
+      thumbnail.loading = "lazy";
+      view.append(thumbnail);
+      view.addEventListener("click", () => openActionPhoto(habit.name, photo, "美食照片"));
+      row.append(view);
+    }
+    row.append(edit);
     el.habits.append(row);
     habitButtons.set(habit.id, { row, button, edit, rewardAmount, description });
   }
   filterHabits();
 }
+
+el["action-photo-dialog"].addEventListener("close", () => {
+  if (!el["action-photo-dialog"].open) el["action-photo-image"].removeAttribute("src");
+});
 
 function openActionEditor(id) {
   const habit = state.habits.find(item => item.id === id);
@@ -1674,14 +1722,17 @@ function openActionEditor(id) {
   el["action-name"].setCustomValidity("");
   el["action-description"].value = habit?.description ?? "";
   el["action-category"].value = habit ? habitCategory(habit) : actionFilter === "all" ? "other" : actionFilter;
-  el["action-repeat"].value = habit ? habitRepeat(habit) : "daily";
+  el["action-photo-file"].value = "";
+  el["action-photo-status"].textContent = "";
+  el["action-repeat"].value = habit ? habitRepeat(habit) : "";
   el["action-repeat"].disabled = lockedRepeat;
   el["action-repeat"].title = lockedRepeat ? "历史周常行动保持原重复频率" : "";
   el["action-repeat"].querySelector('[value="weekly"]').disabled = historical && !lockedRepeat;
   el["action-only-date"].max = todayKey();
   el["action-only-date"].value = habit?.onlyOn ?? day;
   el["action-weekly-target"].value = habit?.weeklyTarget ?? 4;
-  updateWeeklyField();
+  updateActionRepeatFields();
+  renderActionPhotoField();
   el["action-reward"].value = actionReward(habit);
   el["action-praise"].value = habit?.praiseScore ?? "";
   el["action-praise-quality"].value = actionPraiseLabel(habit?.praiseScore);
@@ -1694,14 +1745,23 @@ function openActionEditor(id) {
   el["action-name"].focus();
 }
 
-function updateWeeklyField() {
-  el["action-weekly-row"].hidden = el["action-repeat"].value !== "weekly";
-  const once = el["action-repeat"].value === "once";
+function updateActionRepeatFields() {
+  const repeat = el["action-repeat"].value;
+  const weekly = repeat === "weekly";
+  const once = repeat === "once";
+  el["action-weekly-row"].hidden = !weekly;
+  el["action-weekly-target"].disabled = !weekly;
   el["action-once-row"].hidden = !once;
   el["action-only-date"].disabled = !once;
+  updateActionCreateButton();
 }
 
-el["action-repeat"].addEventListener("change", updateWeeklyField);
+el["action-repeat"].addEventListener("input", updateActionRepeatFields);
+
+function updateActionCreateButton() {
+  el["create-action"].disabled = !el["action-repeat"].value
+    || (el["action-category"].value === "food" && Boolean(editingHabitContext?.loadingPhoto));
+}
 
 function saveHabits(habits, entries = state.entries) {
   const previousHabits = state.habits;
@@ -1720,6 +1780,122 @@ function saveHabits(habits, entries = state.entries) {
   updateControls();
   return true;
 }
+
+function renderActionPhotoField() {
+  const food = el["action-category"].value === "food";
+  const saved = editingHabit && actionPhoto(state.habits.find(habit => habit.id === editingHabit));
+  const photo = saved || editingHabitContext?.photo;
+  const busy = Boolean(editingHabitContext?.loadingPhoto);
+  el["action-photo-field"].hidden = !food && !saved;
+  el["choose-action-photo"].hidden = !food;
+  el["choose-action-photo"].textContent = photo ? "更换图片" : "上传图片";
+  el["choose-action-photo"].disabled = busy;
+  el["remove-action-photo"].hidden = !photo;
+  el["remove-action-photo"].disabled = busy;
+  updateActionCreateButton();
+  const preview = el["action-photo-preview"];
+  preview.hidden = !photo;
+  if (photo) preview.src = photo;
+  else preview.removeAttribute("src");
+}
+
+async function compressActionPhoto(file) {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    const painter = canvas.getContext("2d");
+    for (const edge of [1024, 768, 576, 432, 320]) {
+      const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      painter.fillStyle = "#fff";
+      painter.fillRect(0, 0, canvas.width, canvas.height);
+      painter.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of [.84, .68, .52]) {
+        const photo = canvas.toDataURL("image/jpeg", quality);
+        if (photo.length <= 72 * 1024) return photo;
+      }
+    }
+    throw new Error("Photo could not fit in the save");
+  } finally {
+    bitmap.close();
+  }
+}
+
+function photoFitsInSnapshot(snapshot, status) {
+  // Keep photo additions within the same byte limit as forest-save-sync.
+  if (new Blob([JSON.stringify(snapshot)]).size <= 2 * 1024 * 1024) return true;
+  status.textContent = "存档空间不足，请先移除一些照片再添加。";
+  return false;
+}
+
+function actionPhotoFits(habits) {
+  return photoFitsInSnapshot({ ...state, habits }, el["action-photo-status"]);
+}
+
+function isSupportedActionPhoto(file) {
+  const supported = file.type ? /^image\/(?:jpeg|png|webp)$/.test(file.type) : /\.(?:jpe?g|png|webp)$/i.test(file.name);
+  return supported && file.size <= 20 * 1024 * 1024;
+}
+
+function setActionPhoto(photo, context) {
+  const status = el["action-photo-status"];
+  if (context.saveKey !== activeForestSave().key()) {
+    status.textContent = "当前存档已切换，请关闭后重新打开。";
+    return;
+  }
+  if (editingHabit) {
+    const habit = state.habits.find(item => item.id === editingHabit);
+    if (!habit || (photo && habitCategory(habit) !== "food")) {
+      status.textContent = "行动已变更，请关闭后重新打开。";
+      return;
+    }
+    const habits = state.habits.map(item => item === habit ? { ...item, photo } : item);
+    if (photo && !actionPhotoFits(habits)) return;
+    if (!saveHabits(habits)) {
+      status.textContent = "图片修改未保存，请重试。";
+      return;
+    }
+  } else {
+    context.photo = photo;
+  }
+  renderActionPhotoField();
+  status.textContent = photo ? (editingHabit ? "照片已保存。" : "已选好照片，添加行动时保存。") : "";
+}
+
+el["choose-action-photo"].addEventListener("click", () => el["action-photo-file"].click());
+el["remove-action-photo"].addEventListener("click", () => {
+  setActionPhoto(undefined, editingHabitContext);
+  if (!el["choose-action-photo"].hidden && el["remove-action-photo"].hidden) el["choose-action-photo"].focus();
+});
+el["action-photo-file"].addEventListener("change", async event => {
+  const file = event.currentTarget.files[0];
+  event.currentTarget.value = "";
+  const context = editingHabitContext;
+  if (!file || !context || context.loadingPhoto || el["action-category"].value !== "food") return;
+  const status = el["action-photo-status"];
+  if (!isSupportedActionPhoto(file)) {
+    status.textContent = "请选择 20 MB 以内的 JPG、PNG 或 WebP 图片。";
+    return;
+  }
+  context.loadingPhoto = true;
+  renderActionPhotoField();
+  status.textContent = "正在处理图片…";
+  try {
+    const photo = await compressActionPhoto(file);
+    if (el["action-editor"].open && context === editingHabitContext && el["action-category"].value === "food") {
+      setActionPhoto(photo, context);
+    }
+  } catch {
+    if (el["action-editor"].open && context === editingHabitContext) status.textContent = "无法读取这张图片，请换一张。";
+  } finally {
+    context.loadingPhoto = false;
+    if (el["action-editor"].open && context === editingHabitContext) {
+      if (status.textContent === "正在处理图片…") status.textContent = "";
+      renderActionPhotoField();
+    }
+  }
+});
 
 function setActionEditMode(editing) {
   el.habits.classList.toggle("is-editing", editing);
@@ -1764,7 +1940,9 @@ el["action-category-form"].addEventListener("submit", event => {
 });
 el["open-action-log"].addEventListener("click", () => showJournal());
 const actionPraiseInput = el["action-praise"];
-el["action-editor-form"].addEventListener("input", () => {
+el["action-editor-form"].addEventListener("input", event => {
+  if (event.target === el["action-photo-file"]) return;
+  if (event.target === el["action-category"]) renderActionPhotoField();
   const praiseLabel = actionPraiseLabel(actionPraiseInput.valueAsNumber);
   el["action-praise-quality"].value = praiseLabel;
   const name = el["action-name"].value.trim();
@@ -1811,7 +1989,16 @@ el["action-editor-form"].addEventListener("input", () => {
 });
 el["action-editor-form"].addEventListener("submit", event => {
   event.preventDefault();
-  if (editingHabit) return;
+  if (editingHabit || !editingHabitContext) return;
+  if (editingHabitContext.saveKey !== activeForestSave().key()) {
+    el["action-editor-status"].textContent = "当前存档已切换，请关闭后重新打开。";
+    return;
+  }
+  const repeat = el["action-repeat"].value;
+  if (!repeat) {
+    el["action-repeat"].reportValidity();
+    return;
+  }
   const name = el["action-name"].value.trim();
   if (!name) {
     el["action-name"].setCustomValidity("请输入行动名称。");
@@ -1823,7 +2010,6 @@ el["action-editor-form"].addEventListener("submit", event => {
   const reward = el["action-reward"].valueAsNumber;
   const praiseScore = actionPraiseInput.value ? actionPraiseInput.valueAsNumber : undefined;
   const id = crypto.randomUUID?.() ?? `action-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
-  const repeat = el["action-repeat"].value;
   if (repeat === "weekly" && !el["action-weekly-target"].validity.valid) {
     el["action-editor-status"].textContent = "每周目标次数请输入 1–7 的整数。";
     return;
@@ -1834,8 +2020,11 @@ el["action-editor-form"].addEventListener("submit", event => {
   }
   const onlyOn = repeat === "once" ? el["action-only-date"].value : undefined;
   const weeklyTarget = repeat === "weekly" ? el["action-weekly-target"].valueAsNumber : undefined;
-  const habit = { id, name, description, category, reward, onlyOn, weeklyTarget, praiseScore };
-  if (saveHabits([...state.habits, habit])) el["action-editor"].close();
+  if (category === "food" && editingHabitContext.loadingPhoto) return;
+  const photo = category === "food" ? editingHabitContext.photo : undefined;
+  const habit = { id, name, description, category, reward, onlyOn, weeklyTarget, praiseScore, photo };
+  const habits = [...state.habits, habit];
+  if ((!photo || actionPhotoFits(habits)) && saveHabits(habits)) el["action-editor"].close();
 });
 el["delete-action"].addEventListener("click", () => {
   const habit = state.habits.find(item => item.id === editingHabit);
@@ -1859,6 +2048,9 @@ el["confirm-action-delete"].addEventListener("click", () => {
   el["action-editor"].close();
 });
 el["action-editor"].addEventListener("close", () => {
+  if (el["action-editor"].open) return;
+  editingHabitContext = undefined;
+  el["action-photo-preview"].removeAttribute("src");
   if (!el.actions.open) return;
   const habit = habitButtons.get(editingHabit);
   const edit = el.habits.classList.contains("is-editing") && habit && !habit.row.hidden && habit.edit;
@@ -1948,6 +2140,7 @@ function updateExpansionDialog() {
 }
 
 function updateControls() {
+  el["open-ai-adventure-history"].hidden = !state.habits.some(isAiAdventure) && !aiAdventureRecords().length;
   const today = todayKey();
   const day = actionViewDay ?? today;
   const viewingPast = day !== today;
@@ -2003,6 +2196,7 @@ function updateControls() {
       repeat === "weekly" ? "" : `${reward} 点生命力`,
     ].filter(Boolean).join("，"));
     button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成"
+      : isAiAdventure(habit) ? done ? "追加学习记录" : "填写学习记录并完成"
       : activityRecordConfig(habit) && (day === today || entry?.[activityRecordConfig(habit).key]) ? done ? "查看或修改当天记录" : "填写记录并完成"
       : done ? "取消完成" : weekMet ? "继续记录，本周奖励已结算" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
@@ -2102,8 +2296,11 @@ function updateControls() {
     use.disabled = owned === 0;
     useStock.textContent = `库存 ${owned}`;
   }
+  const sowSpecies = plants.get(sowing?.species);
+  const readyToPlant = activeTool === "sow" ? Boolean(sowSpecies && (state.seedlings.some(seedling => seedling.species === sowing.species)
+    || (isPlantUnlocked(sowSpecies.unlockLevel) && balance >= sowSpecies.price))) : canPlant && !activeTool;
   for (const button of el.plots.children) {
-    button.classList.toggle("ready", canPlant && !activeTool && !button.matches(".locked, .planted"));
+    button.classList.toggle("ready", readyToPlant && !button.matches(".locked, .planted"));
   }
   if (el["reclaim-dialog"].open) updateExpansionDialog();
   if (el["farm-inventory"].open) renderInventory();
@@ -2546,32 +2743,38 @@ function setActivityBoardCalendar(open) {
   el["activity-board-calendar-toggle"].setAttribute("aria-expanded", String(open));
 }
 
-el["activity-board"].addEventListener("pointermove", event => {
-  if (event.pointerType !== "mouse") return;
-  const { clientX: x, clientY: y } = event;
-  for (const area of activityBoardScrollAreas) {
-    const { left, right, top, bottom } = area.getBoundingClientRect();
-    const inside = x >= left && x <= right && y >= top && y <= bottom;
-    const vertical = area.scrollHeight > area.clientHeight && right - x <= (area.offsetWidth - area.clientWidth || 8);
-    const horizontal = area.scrollWidth > area.clientWidth && bottom - y <= (area.offsetHeight - area.clientHeight || 8);
-    area.classList.toggle("scrollbar-hover", inside && (vertical || horizontal));
+function bindAutoHideScrollbars(dialog, areas) {
+  dialog.addEventListener("pointermove", event => {
+    if (event.pointerType !== "mouse") return;
+    const { clientX: x, clientY: y } = event;
+    for (const area of areas) {
+      const { left, right, top, bottom } = area.getBoundingClientRect();
+      const inside = x >= left && x <= right && y >= top && y <= bottom;
+      const vertical = area.scrollHeight > area.clientHeight && right - x <= (area.offsetWidth - area.clientWidth || 8);
+      const horizontal = area.scrollWidth > area.clientWidth && bottom - y <= (area.offsetHeight - area.clientHeight || 8);
+      area.classList.toggle("scrollbar-hover", inside && (vertical || horizontal));
+    }
+  });
+  dialog.addEventListener("pointerleave", () => {
+    for (const area of areas) area.classList.remove("scrollbar-hover");
+  });
+  for (const area of areas) {
+    let hideScrollbar;
+    area.addEventListener("scroll", () => {
+      if (!dialog.open) return;
+      area.classList.add("is-scrolling");
+      clearTimeout(hideScrollbar);
+      hideScrollbar = setTimeout(() => area.classList.remove("is-scrolling"), 500);
+    });
+    dialog.addEventListener("close", () => {
+      clearTimeout(hideScrollbar);
+      area.classList.remove("scrollbar-hover", "is-scrolling");
+    });
   }
-});
-el["activity-board"].addEventListener("pointerleave", () => {
-  for (const area of activityBoardScrollAreas) area.classList.remove("scrollbar-hover");
-});
-for (const area of activityBoardScrollAreas) {
-  let hideScrollbar;
-  area.addEventListener("scroll", () => {
-    area.classList.add("is-scrolling");
-    clearTimeout(hideScrollbar);
-    hideScrollbar = setTimeout(() => area.classList.remove("is-scrolling"), 500);
-  });
-  el["activity-board"].addEventListener("close", () => {
-    clearTimeout(hideScrollbar);
-    area.classList.remove("scrollbar-hover", "is-scrolling");
-  });
 }
+
+bindAutoHideScrollbars(el["activity-board"], activityBoardScrollAreas);
+bindAutoHideScrollbars(el.actions, [el.habits]);
 
 el["open-activity-board"].addEventListener("click", () => {
   setActivityBoardCalendar(false);
@@ -2715,14 +2918,335 @@ el["workout-undo"].addEventListener("click", () => {
   }
 });
 
-function toggleActionCompletion(kind, date = todayKey(), status = el["action-status"], skipWorkout = false) {
+function isAiAdventure(habit) {
+  return habit?.name?.trim() === "AI大冒险";
+}
+
+function aiAdventureRecords() {
+  return Array.isArray(state.aiAdventureRecords) ? state.aiAdventureRecords : [];
+}
+
+let aiAdventureContext;
+let pendingAiAdventureDelete;
+let aiAdventurePeriod = "day";
+const aiAdventureEditor = el["ai-adventure-editor"];
+const aiAdventureHistory = el["ai-adventure-history"];
+const aiAdventureDeleteDialog = el["ai-adventure-delete-dialog"];
+const aiAdventureForm = el["ai-adventure-form"];
+const aiAdventureStatus = el["ai-adventure-status"];
+const aiAdventurePeriods = aiAdventureHistory.querySelectorAll("[data-ai-period]");
+const aiAdventureModes = aiAdventureHistory.querySelectorAll("[data-adventure-mode]");
+
+function setAiAdventureMode(mode) {
+  if (mode) aiAdventureHistory.dataset.recordMode = mode;
+  else delete aiAdventureHistory.dataset.recordMode;
+  for (const button of aiAdventureModes) {
+    button.setAttribute("aria-pressed", String(button.dataset.adventureMode === mode));
+  }
+}
+
+for (const button of aiAdventureModes) {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.adventureMode;
+    setAiAdventureMode(aiAdventureHistory.dataset.recordMode === mode ? "" : mode);
+  });
+}
+
+function updateAiAdventureQuality() {
+  const score = el["ai-adventure-score"].valueAsNumber;
+  const badge = el["ai-adventure-quality"];
+  const tier = actionPraiseTier(score);
+  badge.dataset.tier = tier;
+  badge.textContent = actionPraiseQualities[tier] ?? "";
+}
+
+function openAiAdventure({ kind, date, status, completed = false, note }) {
+  aiAdventureContext = { kind, date, status, note, photo: actionPhoto(note), saveKey: activeForestSave().key() };
+  aiAdventureForm.reset();
+  if (note) {
+    el["ai-adventure-title"].value = note.title;
+    el["ai-adventure-body"].value = note.body;
+    el["ai-adventure-minutes"].value = note.minutes;
+    el["ai-adventure-score"].value = note.score ?? "";
+  }
+  updateAiAdventureQuality();
+  const label = note ? "编辑学习记录" : completed ? "追加学习记录" : "记录这次学习";
+  el["ai-adventure-editor-day"].textContent = `${date.slice(0, 4)}年${formatDate(date)} · ${label}`;
+  el["ai-adventure-submit"].textContent = note ? "保存修改" : completed ? "保存记录" : "保存并完成";
+  el["ai-adventure-skip"].hidden = Boolean(note) || completed;
+  el["ai-adventure-undo"].hidden = Boolean(note) || !completed;
+  aiAdventureStatus.textContent = "";
+  el["ai-adventure-photo-status"].textContent = "";
+  renderAiAdventurePhoto();
+  aiAdventureEditor.showModal();
+}
+
+function renderAiAdventurePhoto() {
+  const { photo, loadingPhoto } = aiAdventureContext;
+  const preview = el["ai-adventure-photo-preview"];
+  preview.hidden = !photo;
+  if (photo) preview.src = photo;
+  else preview.removeAttribute("src");
+  el["ai-adventure-photo-choose"].textContent = photo ? "更换图片" : "上传图片";
+  el["ai-adventure-photo-choose"].disabled = Boolean(loadingPhoto);
+  el["ai-adventure-photo-remove"].hidden = !photo;
+  el["ai-adventure-photo-remove"].disabled = Boolean(loadingPhoto);
+  el["ai-adventure-submit"].disabled = Boolean(loadingPhoto);
+}
+
+el["ai-adventure-photo-choose"].addEventListener("click", () => el["ai-adventure-photo-file"].click());
+el["ai-adventure-photo-remove"].addEventListener("click", () => {
+  aiAdventureContext.photo = undefined;
+  el["ai-adventure-photo-status"].textContent = "";
+  renderAiAdventurePhoto();
+  el["ai-adventure-photo-choose"].focus();
+});
+el["ai-adventure-photo-file"].addEventListener("change", async event => {
+  const file = event.currentTarget.files[0];
+  event.currentTarget.value = "";
+  const context = aiAdventureContext;
+  if (!file || !aiAdventureEditor.open || !context || context.loadingPhoto) return;
+  const status = el["ai-adventure-photo-status"];
+  if (!isSupportedActionPhoto(file)) {
+    status.textContent = "请选择 20 MB 以内的 JPG、PNG 或 WebP 图片。";
+    return;
+  }
+  const currentEditor = () => aiAdventureEditor.open && aiAdventureContext === context
+    && context.saveKey === activeForestSave().key();
+  context.loadingPhoto = true;
+  renderAiAdventurePhoto();
+  status.textContent = "正在处理图片…";
+  try {
+    const photo = await compressActionPhoto(file);
+    if (currentEditor()) {
+      context.photo = photo;
+      status.textContent = "";
+    }
+  } catch {
+    if (currentEditor()) status.textContent = "无法读取这张图片，请换一张。";
+  } finally {
+    context.loadingPhoto = false;
+    if (currentEditor()) renderAiAdventurePhoto();
+  }
+});
+
+function currentAiAdventure() {
+  const context = aiAdventureContext;
+  const habit = state.habits.find(item => item.id === context?.kind);
+  if (!isAiAdventure(habit) || context.saveKey !== activeForestSave().key() || !actionAvailableOn(habit, context.date, todayKey())) {
+    aiAdventureStatus.textContent = "行动或存档已变化，请关闭后重新打开。";
+    return;
+  }
+  const completed = state.entries.some(entry => entry.kind === habit.id && entry.date === context.date && !entry.weekly);
+  return { ...context, habit, completed };
+}
+
+el["ai-adventure-score"].addEventListener("input", updateAiAdventureQuality);
+aiAdventureForm.addEventListener("submit", event => {
+  event.preventDefault();
+  if (!aiAdventureEditor.open || aiAdventureContext?.loadingPhoto) return;
+  const editing = aiAdventureContext?.note;
+  const context = editing ? aiAdventureContext : currentAiAdventure();
+  if (!context) return;
+  const title = el["ai-adventure-title"].value.trim();
+  const body = el["ai-adventure-body"].value.trim();
+  const minutes = el["ai-adventure-minutes"].valueAsNumber;
+  const scoreField = el["ai-adventure-score"];
+  const score = scoreField.valueAsNumber;
+  if (!title || !body || !Number.isSafeInteger(minutes) || minutes < 1 ||
+    (!scoreField.validity.valid || (scoreField.value && actionPraiseTier(score) < 0))) {
+    aiAdventureStatus.textContent = "请填写标题、正文和用时。宝藏指数可留空，填写时须为 80–100 的整数。";
+    return;
+  }
+  const records = aiAdventureRecords();
+  const editIndex = editing ? records.findIndex(note => note?.id === editing.id) : -1;
+  if (editing && (context.saveKey !== activeForestSave().key() ||
+    JSON.stringify(records[editIndex]) !== JSON.stringify(editing))) {
+    aiAdventureStatus.textContent = "这条记录已变化，请关闭后重新打开。";
+    return;
+  }
+  const fields = { title, body, minutes, score: scoreField.value ? score : undefined, photo: context.photo };
+  const updatedRecords = editing
+    ? records.map((note, index) => index === editIndex ? { ...note, ...fields } : note)
+    : [...records, { id: crypto.randomUUID(), date: context.date, createdAt: new Date().toISOString(), ...fields }];
+  const snapshot = { ...state, aiAdventureRecords: updatedRecords };
+  const validatePhoto = context.photo && context.photo !== actionPhoto(editing)
+    ? draft => photoFitsInSnapshot(draft, aiAdventureStatus) : undefined;
+  if (editing || context.completed) {
+    if (validatePhoto && !validatePhoto(snapshot)) return;
+    if (!saveState(snapshot)) {
+      aiAdventureStatus.textContent = "浏览器无法保存，草稿仍在窗口中，请重试。";
+      return;
+    }
+    state = snapshot;
+    if (!editing) context.status.textContent = "已追加一条学习记录。";
+  } else {
+    snapshot.entries = [...state.entries];
+    if (!record(context.habit, context.date, aiAdventureStatus, undefined, snapshot, validatePhoto)) return;
+    context.status.textContent = aiAdventureStatus.textContent;
+  }
+  aiAdventureEditor.close();
+  if (editing) {
+    renderAiAdventureHistory();
+    el["ai-adventure-history-title"].focus();
+  }
+});
+
+el["ai-adventure-skip"].addEventListener("click", () => {
+  const context = currentAiAdventure();
+  if (!context || context.completed) return;
+  if (record(context.habit, context.date, aiAdventureStatus)) {
+    context.status.textContent = aiAdventureStatus.textContent;
+    aiAdventureEditor.close();
+  }
+});
+
+el["ai-adventure-undo"].addEventListener("click", () => {
+  const context = currentAiAdventure();
+  if (!context || !context.completed) return;
+  toggleActionCompletion(context.kind, context.date, aiAdventureStatus, true);
+  if (state.entries.some(entry => entry.kind === context.kind && entry.date === context.date && !entry.weekly)) return;
+  context.status.textContent = aiAdventureStatus.textContent;
+  aiAdventureEditor.close();
+});
+
+function renderAiAdventureHistory() {
+  const day = el["ai-adventure-day"].value || todayKey();
+  const { start, end, label } = activityPeriodRange(day, aiAdventurePeriod);
+  const byScore = el["ai-adventure-sort"].value === "score";
+  const records = aiAdventureRecords().filter(note =>
+    note?.date >= start && note.date <= end && typeof note.createdAt === "string").reverse()
+    .sort((left, right) =>
+      (byScore ? (right.score ?? 0) - (left.score ?? 0) : 0) ||
+      right.date.localeCompare(left.date) || right.createdAt.localeCompare(left.createdAt));
+  el["ai-adventure-range"].textContent = `${label} · ${records.length} 条记录`;
+  const cards = records.map(note => {
+    const card = document.createElement("article");
+    card.className = "adventure-record";
+    const heading = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = note.title;
+    heading.append(title);
+    const quality = actionPraiseLabel(note.score);
+    if (quality) {
+      const badge = document.createElement("span");
+      badge.className = "adventure-quality";
+      badge.dataset.tier = actionPraiseTier(note.score);
+      badge.textContent = quality;
+      heading.append(badge);
+    }
+    const metaRow = document.createElement("div");
+    metaRow.className = "adventure-record-meta";
+    const meta = document.createElement("small");
+    meta.textContent = `${note.date.slice(0, 4)}年${formatDate(note.date)} · ${note.minutes} 分钟`;
+    const actions = document.createElement("div");
+    actions.className = "adventure-record-actions";
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.dataset.recordAction = "edit";
+    edit.textContent = "编辑";
+    edit.setAttribute("aria-label", `编辑学习记录：${note.title}`);
+    edit.setAttribute("aria-haspopup", "dialog");
+    edit.addEventListener("click", () => openAiAdventure({ date: note.date, note }));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.dataset.recordAction = "delete";
+    remove.className = "adventure-record-delete";
+    remove.textContent = "删除";
+    remove.setAttribute("aria-label", `删除学习记录：${note.title}`);
+    remove.setAttribute("aria-haspopup", "dialog");
+    remove.addEventListener("click", () => {
+      pendingAiAdventureDelete = { id: note.id, saveKey: activeForestSave().key() };
+      el["ai-adventure-delete-copy"].textContent = `确定删除「${note.title}」这条学习记录吗？`;
+      el["ai-adventure-delete-status"].textContent = "";
+      aiAdventureDeleteDialog.showModal();
+    });
+    actions.append(edit, remove);
+    metaRow.append(meta, actions);
+    const body = document.createElement("p");
+    body.textContent = note.body;
+    card.append(heading, metaRow, body);
+    const photo = actionPhoto(note);
+    if (photo) {
+      const view = document.createElement("button");
+      view.type = "button";
+      view.className = "adventure-record-photo";
+      view.setAttribute("aria-label", `查看「${note.title}」的配图`);
+      view.setAttribute("aria-haspopup", "dialog");
+      const thumbnail = document.createElement("img");
+      thumbnail.src = photo;
+      thumbnail.alt = "";
+      thumbnail.loading = "lazy";
+      view.append(thumbnail);
+      view.addEventListener("click", () => openActionPhoto(note.title, photo, "学习记录配图"));
+      card.append(view);
+    }
+    return card;
+  });
+  if (!cards.length) {
+    const empty = document.createElement("p");
+    empty.className = "adventure-empty";
+    empty.textContent = "这段时间还没有学习记录。";
+    cards.push(empty);
+  }
+  el["ai-adventure-records"].replaceChildren(...cards);
+}
+
+el["ai-adventure-delete-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  if (event.submitter?.value !== "delete") {
+    aiAdventureDeleteDialog.close();
+    return;
+  }
+  const pending = pendingAiAdventureDelete;
+  if (!aiAdventureDeleteDialog.open || !pending || pending.saveKey !== activeForestSave().key()) return;
+  const records = aiAdventureRecords();
+  const index = records.findIndex(note => note?.id === pending.id);
+  if (index < 0) {
+    el["ai-adventure-delete-status"].textContent = "这条记录已不存在。";
+    return;
+  }
+  const snapshot = { ...state, aiAdventureRecords: records.filter((_, position) => position !== index) };
+  if (!saveState(snapshot)) {
+    el["ai-adventure-delete-status"].textContent = "浏览器无法保存此次删除，请重试。";
+    return;
+  }
+  state = snapshot;
+  aiAdventureDeleteDialog.close();
+  renderAiAdventureHistory();
+  updateControls();
+  el["ai-adventure-history-title"].focus();
+});
+
+el["open-ai-adventure-history"].addEventListener("click", () => {
+  setAiAdventureMode("");
+  el["ai-adventure-day"].max = todayKey();
+  el["ai-adventure-day"].value = actionEditorDay();
+  renderAiAdventureHistory();
+  aiAdventureHistory.showModal();
+});
+for (const button of aiAdventurePeriods) {
+  button.addEventListener("click", () => {
+    aiAdventurePeriod = button.dataset.aiPeriod;
+    for (const tab of aiAdventurePeriods) tab.setAttribute("aria-pressed", String(tab === button));
+    renderAiAdventureHistory();
+  });
+}
+el["ai-adventure-day"].addEventListener("change", renderAiAdventureHistory);
+el["ai-adventure-sort"].addEventListener("change", renderAiAdventureHistory);
+
+function toggleActionCompletion(kind, date = todayKey(), status = el["action-status"], skipRecordDialog = false) {
   const day = todayKey();
   if (day !== renderedToday) updateControls();
   const habit = state.habits.find(item => item.id === kind);
   if (!habit || date > day || !actionAvailableOn(habit, date, day)) return;
   const index = state.entries.findIndex(entry => entry.date === date && entry.kind === kind && !entry.weekly);
+  if (!skipRecordDialog && isAiAdventure(habit)) {
+    openAiAdventure({ kind, date, status, completed: index >= 0 });
+    return;
+  }
   const config = activityRecordConfig(habit);
-  if (!skipWorkout && config && (date === day || state.entries[index]?.[config.key])) {
+  if (!skipRecordDialog && config && (date === day || state.entries[index]?.[config.key])) {
     openWorkout(habit, date, status, state.entries[index]);
     return;
   }
@@ -2785,15 +3309,20 @@ function addActionEntry(habit, date, source, snapshot = state) {
   return { reward: actionReward(habit), award, weekly, entry };
 }
 
-function record(habit, date, status, details) {
-  const previousLength = state.entries.length;
-  const { reward, award, weekly, entry } = addActionEntry(habit, date);
+function record(habit, date, status, details, snapshot = state, validateSnapshot) {
+  const previousLength = snapshot.entries.length;
+  const { reward, award, weekly, entry } = addActionEntry(habit, date, undefined, snapshot);
   if (details) Object.assign(entry, details);
-  if (!saveState()) {
-    state.entries.length = previousLength;
+  if (validateSnapshot && !validateSnapshot(snapshot)) {
+    snapshot.entries.length = previousLength;
+    return false;
+  }
+  if (!saveState(snapshot)) {
+    snapshot.entries.length = previousLength;
     status.textContent = "浏览器无法保存，标记完成失败。";
     return false;
   }
+  state = snapshot;
   renderOrbs();
   updateControls();
   if (weekly) {
@@ -2886,6 +3415,7 @@ function updatePlantPickerAvailability(balance = availableEnergy()) {
   el["plant-picker-cost"].textContent = `${owned ? 0 : species.price} 点`;
   el["plant-picker-stock"].textContent = `${owned} 株`;
   el["plant-picker-confirm"].disabled = !openPlot || (!owned && (locked || balance < species.price));
+  el["plant-picker-sow"].disabled = el["plant-picker-confirm"].disabled;
   let message = "";
   if (!openPlot) message = "请重新选择空地。";
   else if (!owned && locked) message = `${species.unlockLevel} 级解锁`;
@@ -2953,13 +3483,10 @@ function showPlantPicker(index) {
     return;
   }
   selectedPlot = index;
-  const initial = [...plantOptions.keys()].find(id => {
-    const { unlockLevel, price } = plants.get(id);
-    return state.seedlings.some(seedling => seedling.species === id) || (isPlantUnlocked(unlockLevel) && balance >= price);
-  });
+  const initial = [...plantOptions.keys()].find(id => isPlantUnlocked(plants.get(id).unlockLevel));
   filterPlantPicker("all", initial);
   el["plant-picker"].showModal();
-  plantOptions.get(selectedPlant).choice.scrollIntoView({ block: "nearest", inline: "nearest" });
+  el["plant-options"].scrollLeft = 0;
   updatePlantPickerArrows();
 }
 
@@ -2974,6 +3501,13 @@ for (const [id, direction] of [["plant-picker-prev", -1], ["plant-picker-next", 
   });
 }
 el["plant-picker-confirm"].addEventListener("click", () => plant(selectedPlot, selectedPlant));
+el["plant-picker-sow"].addEventListener("click", () => {
+  updatePlantPickerAvailability();
+  if (el["plant-picker-sow"].disabled) return;
+  sowing = { species: selectedPlant, saveKey: activeForestSave().key() };
+  el["plant-picker"].close();
+  selectTool("sow");
+});
 
 function buySeedling(id) {
   const species = plants.get(id);
@@ -3040,13 +3574,16 @@ function useFertilizer(id) {
 
 function plant(index, species) {
   const status = el["plant-picker-status"];
+  const fail = message => {
+    status.textContent = message;
+    if (activeTool === "sow") notify(message);
+    return false;
+  };
   if (!isOpenPlot(index)) {
-    status.textContent = "这块地需要先开垦才能种植。";
-    return;
+    return fail("这块地需要先开垦才能种植。");
   }
   if (state.trees.some(tree => tree.plot === index)) {
-    status.textContent = "这块地已经种上植物，请选另一格。";
-    return;
+    return fail("这块地已经种上植物，请选另一格。");
   }
   const { name, price, maturity, unlockLevel } = plants.get(species);
   const stockIndex = state.seedlings.findIndex(seedling => seedling.species === species);
@@ -3057,13 +3594,11 @@ function plant(index, species) {
     state.seedlings.splice(stockIndex, 1);
   } else {
     if (!isPlantUnlocked(unlockLevel)) {
-      status.textContent = `${name}将在 ${unlockLevel} 级解锁。`;
-      return;
+      return fail(`${name}将在 ${unlockLevel} 级解锁。`);
     }
     energyIds = availableEnergyIds(price);
     if (energyIds.length < price) {
-      status.textContent = `种植${name}需要 ${price} 点生命力。`;
-      return;
+      return fail(`种植${name}需要 ${price} 点生命力。`);
     }
   }
   state.trees.push({
@@ -3073,14 +3608,14 @@ function plant(index, species) {
   if (!saveState()) {
     state.trees.pop();
     if (seedling) state.seedlings.splice(stockIndex, 0, seedling);
-    status.textContent = "存档未能保存，请重试。";
-    return;
+    return fail("存档未能保存，请重试。");
   }
   el["plant-picker"].close();
   renderPlots(index);
   updateControls();
   el.plots.querySelector(`[data-plot="${index}"]`).focus({ preventScroll: true });
-  notify(`${name}种下了，点它可以回看行动`);
+  notify(activeTool === "sow" ? `${name}种下了。继续点击空地撒种，右键或 Esc 退出。` : `${name}种下了，点它可以回看行动`);
+  return true;
 }
 
 function showJournal(tree) {
@@ -3174,20 +3709,28 @@ function renderJournalRecords(content, entries, isCrop) {
   }
 }
 
+function activeFieldTool() {
+  return activeTool === "sow" && sowing ? {
+    followsPointer: true,
+    cursorSrc: plants.get(sowing.species).sprite,
+    hint: `正在撒种：${plants.get(sowing.species).name}。点击空地连续种植，右键或 Esc 退出。`,
+  } : fieldTools.get(activeTool);
+}
+
 function selectTool(id) {
   activeTool = activeTool === id ? undefined : id;
   for (const key of fieldTools.keys()) {
     el["tool-" + key].setAttribute("aria-pressed", String(activeTool === key));
   }
   hideToolCursor();
-  const tool = fieldTools.get(activeTool);
+  const tool = activeFieldTool();
   if (tool?.followsPointer) {
-    el["tool-cursor"].src = forestAssetUrl(`./assets/tools/${tool.artwork}.webp`);
+    el["tool-cursor"].src = forestAssetUrl(tool.cursorSrc ?? `./assets/tools/${tool.artwork}.webp`);
     el["tool-cursor"].dataset.tool = activeTool;
   }
   updateControls();
   if (activeTool) cameraTo(875, true, 585);
-  notify(activeTool ? fieldTools.get(activeTool).hint : "已退出工具模式。");
+  notify(activeTool ? tool.hint : "已退出工具模式。");
 }
 
 function hideToolCursor() {
@@ -3245,7 +3788,7 @@ function syncWorldScene() {
 window.addEventListener("hashchange", syncWorldScene);
 
 el.camera.addEventListener("pointermove", event => {
-  if (event.pointerType === "touch" || !fieldTools.get(activeTool)?.followsPointer) {
+  if (event.pointerType === "touch" || !activeFieldTool()?.followsPointer) {
     hideToolCursor();
     return;
   }
@@ -3387,6 +3930,15 @@ function harvest(tree) {
 
 function interactWithPlot(index) {
   if (!isOpenPlot(index)) return;
+  if (activeTool === "sow") {
+    if (sowing?.saveKey !== activeForestSave().key()) {
+      selectTool("sow");
+      notify("存档已切换，请重新选择要撒种的种苗。");
+      return;
+    }
+    plant(index, sowing.species);
+    return;
+  }
   const tree = state.trees.find(plant => plant.plot === index);
   if (!activeTool) {
     if (tree) showJournal(tree);
@@ -4248,6 +4800,10 @@ for (const [id, fertilizer] of fertilizers) {
 }
 function refreshSavedForest() {
   state = readState(activeForestSave());
+  if (el["action-photo-dialog"].open && actionPhotoSaveKey !== activeForestSave().key()) el["action-photo-dialog"].close();
+  if (aiAdventureEditor.open && aiAdventureContext?.saveKey !== activeForestSave().key()) aiAdventureEditor.close();
+  if (aiAdventureDeleteDialog.open && pendingAiAdventureDelete?.saveKey !== activeForestSave().key()) aiAdventureDeleteDialog.close();
+  if (aiAdventureHistory.open) renderAiAdventureHistory();
   if (typeof refreshTodayNotes === "function") refreshTodayNotes();
   renderActionCategories();
   renderHabits(actionEditorDay());

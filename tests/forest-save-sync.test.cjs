@@ -87,7 +87,12 @@ test("journal notes keep all pages across device sync, reload and account switch
   const { sync: phone, storage } = makeClient();
   const now = new Date().toISOString();
   const todayNotes = { activePageId: "new", pages: [
-    { id: "new", content: "今日安排\n✅ 完成\n<原样保留>", createdAt: now, updatedAt: now },
+    {
+      id: "new", title: "这一年的 AI 使用记录", content: "今日安排\n✅ 完成\n<原样保留>", createdAt: now, updatedAt: now,
+      html: "<b>今日安排</b>\n✅ 完成\n&lt;原样保留&gt;", layout: "split",
+      leftTitle: "待验证", rightTitle: "已验证", rightContent: "对照内容",
+      rightHtml: '<font color="#245eb0">对照内容</font>',
+    },
     { id: "old", content: "往日记录".repeat(2500), createdAt: now, updatedAt: now },
   ] };
   desktop.connect("owner", handle("owner"));

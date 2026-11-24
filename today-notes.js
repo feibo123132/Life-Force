@@ -5,15 +5,24 @@
   const byId = id => document.getElementById(id);
   const dialog = byId("today-notes");
   const editor = byId("notes-editor");
-  const highlights = byId("notes-highlights");
+  const pageTitle = byId("notes-page-title");
+  const rightEditor = byId("notes-right-editor");
+  const columns = byId("notes-columns");
+  const layout = byId("notes-layout");
+  const panes = [
+    { editor, title: byId("notes-left-title"), textKey: "content", htmlKey: "html", titleKey: "leftTitle" },
+    { editor: rightEditor, title: byId("notes-right-title"), textKey: "rightContent", htmlKey: "rightHtml", titleKey: "rightTitle" },
+  ];
   const query = byId("notes-query");
   const search = byId("notes-search");
   const history = byId("notes-history");
   const limit = 10000;
   const drafts = new Map();
-  let owner = "", pageId = "", pendingDelete = "", matches = [], matchIndex = 0;
+  let owner = "", pageId = "", pendingDelete = "", matchIndex = 0;
+  let writing, activeEditor = editor, savedRange;
   const clock = iso => new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   const label = page => `${new Date(page.createdAt).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} ${clock(page.createdAt)}`;
+  const pageName = value => typeof value === "string" ? value.trim().slice(0, pageTitle.maxLength) : "";
   const draftKey = () => `${owner}:${pageId}`;
   const scrollKey = () => `forest-today-note-scroll:${draftKey()}`;
   const newPage = () => {
@@ -41,38 +50,114 @@
     return true;
   }
   function rememberScroll() {
-    // A hidden textarea reports zero after close; keep the last visible position.
     if (!dialog.open || !pageId || owner !== activeForestSave().key()) return;
-    try { localStorage.setItem(scrollKey(), String(editor.scrollTop)); } catch { /* Editing remains available. */ }
+    try {
+      localStorage.setItem(scrollKey(), String(editor.scrollTop));
+      if (!rightEditor.parentElement.hidden) localStorage.setItem(scrollKey() + ":right", String(rightEditor.scrollTop));
+    } catch { /* Editing remains available. */ }
   }
   function saveDraft() {
     if (!pageId || owner !== activeForestSave().key()) return false;
+    const draft = drafts.get(draftKey());
+    if (!draft) return true;
     const current = notes();
-    const page = current.pages.find(item => item.id === pageId);
-    if (!page) return false;
-    const content = editor.value.slice(0, limit);
-    if (content === page.content) { drafts.delete(draftKey()); return true; }
-    drafts.set(draftKey(), content);
+    if (!current.pages.some(item => item.id === pageId)) return false;
     const pages = current.pages.map(item => item.id === pageId
-      ? { ...item, content, updatedAt: new Date().toISOString() } : item);
+      ? { ...item, ...draft, updatedAt: new Date().toISOString() } : item);
     if (!commit({ activePageId: pageId, pages })) return false;
     drafts.delete(draftKey());
     return true;
+  }
+  function edit(changes) {
+    if (!writing || owner !== activeForestSave().key()) return;
+    if (Object.keys(changes).every(key => writing[key] === changes[key])) return;
+    Object.assign(writing, changes);
+    drafts.set(draftKey(), { ...drafts.get(draftKey()), ...changes });
+    saveDraft();
+  }
+  const safeTags = new Set(["B", "STRONG", "I", "EM", "U", "BR", "DIV", "P", "SPAN", "FONT"]);
+  const safeColor = value => /^(?:#[\da-f]{3,8}|rgba?\([\d., %]+\)|transparent)$/i.test(value);
+  function cleanMarkup(html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    for (const node of template.content.querySelectorAll("*")) {
+      if (!safeTags.has(node.tagName) || node.namespaceURI !== "http://www.w3.org/1999/xhtml") {
+        node.remove();
+        continue;
+      }
+      const size = node.getAttribute("size") ?? "";
+      const color = node.getAttribute("color") ?? "";
+      const { fontWeight, fontSize, color: textColor, backgroundColor } = node.style;
+      for (const { name } of [...node.attributes]) node.removeAttribute(name);
+      if (node.tagName === "FONT") {
+        if (/^[2-6]$/.test(size)) node.setAttribute("size", size);
+        if (safeColor(color)) node.setAttribute("color", color);
+      }
+      if (/^(?:normal|bold|[1-9]00)$/.test(fontWeight)) node.style.fontWeight = fontWeight;
+      if (/^(?:small|medium|large|xx?-large|1[4-9]px|2[0-8]px)$/.test(fontSize)) node.style.fontSize = fontSize;
+      if (safeColor(textColor)) node.style.color = textColor;
+      if (safeColor(backgroundColor)) node.style.backgroundColor = backgroundColor;
+    }
+    return template;
+  }
+  function editorText(target) {
+    return target.childNodes.length === 1 && target.firstChild.nodeName === "BR" ? "" : target.innerText;
+  }
+  function renderEditor({ editor: target, textKey, htmlKey }) {
+    const value = writing[textKey];
+    const html = writing[htmlKey];
+    // Older clients can update the plain text while retaining unknown format fields.
+    if (html) target.replaceChildren(cleanMarkup(html).content);
+    if (!html || editorText(target) !== value) target.textContent = value;
+    target.toggleAttribute("data-empty", !value);
+  }
+  function renderLayout() {
+    layout.value = columns.dataset.layout = writing.layout;
+    const showBoth = writing.layout === "split" || Boolean(writing.rightContent || writing.rightTitle);
+    panes[0].title.hidden = !showBoth && !writing.leftTitle;
+    rightEditor.parentElement.hidden = !showBoth;
+    editor.setAttribute("aria-label", showBoth ? "左栏正文" : "今日事正文");
+    if (!showBoth && activeEditor === rightEditor) {
+      activeEditor = editor;
+      savedRange = undefined;
+    }
+  }
+  function textCount() { return writing.content.length + writing.rightContent.length; }
+  function saveEditor(pane) {
+    const { editor: target, textKey, htmlKey } = pane;
+    if (!writing || !dialog.open) return;
+    const value = editorText(target);
+    if (textCount() - writing[textKey].length + value.length > limit) {
+      renderEditor(pane);
+      savedRange = undefined;
+    } else {
+      const styled = target.querySelector("b, strong, i, em, u, font, [style]");
+      edit({ [textKey]: value, [htmlKey]: value && styled ? cleanMarkup(target.innerHTML).innerHTML : "" });
+      target.toggleAttribute("data-empty", !value);
+    }
+    updateCounts();
+    updateBold();
   }
   function renderHistory() {
     const current = notes();
     byId("notes-history-toggle").textContent = `历史 ${current.pages.length}`;
     const cards = current.pages.map(page => {
+      const isCurrent = page.id === pageId;
+      const name = isCurrent ? writing.title : pageName(page.title);
+      const date = label(page);
       const card = document.createElement("div");
       card.className = "notes-page-card";
-      card.classList.toggle("is-current", page.id === pageId);
+      card.classList.toggle("is-current", isCurrent);
       const select = document.createElement("button");
       select.type = "button";
+      if (isCurrent) select.setAttribute("aria-current", "page");
       const title = document.createElement("strong");
-      title.textContent = label(page) + (page.id === pageId ? " · 当前" : "");
+      title.textContent = (name || date) + (isCurrent ? " · 当前" : "");
+      title.title = title.textContent;
       const preview = document.createElement("span");
-      const firstLine = page.content.split("\n").map(line => line.trim()).find(Boolean) || "空白页";
-      preview.textContent = firstLine.length > 36 ? firstLine.slice(0, 36) + "…" : firstLine;
+      const firstLine = [page.content, page.rightContent].join("\n").split("\n").map(line => line.trim()).find(Boolean) || "空白页";
+      const excerpt = firstLine.length > 36 ? firstLine.slice(0, 36) + "…" : firstLine;
+      preview.textContent = name ? `${date} · ${excerpt}` : excerpt;
       select.append(title, preview);
       select.addEventListener("click", () => {
         if (!saveDraft()) return;
@@ -82,7 +167,7 @@
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "notes-delete";
-      remove.setAttribute("aria-label", `删除 ${label(page)} 这一页`);
+      remove.setAttribute("aria-label", `删除 ${name || date} 这一页`);
       remove.textContent = pendingDelete === page.id ? "确认删除" : "删除";
       remove.addEventListener("click", () => {
         if (pendingDelete !== page.id) { pendingDelete = page.id; renderHistory(); return; }
@@ -100,58 +185,109 @@
     });
     byId("notes-pages").replaceChildren(...cards);
   }
-  function syncHighlights() {
-    highlights.style.width = `${editor.clientWidth}px`;
-    highlights.style.height = `${editor.clientHeight}px`;
-    highlights.scrollTop = editor.scrollTop;
-    highlights.scrollLeft = editor.scrollLeft;
+  function findRanges(target, pattern) {
+    let text = "";
+    const nodes = [];
+    function visit(node) {
+      if (node.nodeType === Node.TEXT_NODE && node.length) {
+        nodes.push({ node, start: text.length, end: text.length + node.length });
+        text += node.data.replace(/\u00a0/g, " ");
+        return;
+      }
+      const block = node.matches?.("br, div, p");
+      if (block) text += "\n";
+      for (const child of node.childNodes) visit(child);
+      if (block) text += "\n";
+    }
+    for (const child of target.childNodes) visit(child);
+    let index = 0;
+    return Array.from(text.matchAll(pattern), match => {
+      const start = match.index;
+      const end = start + match[0].length - 1;
+      while (start >= nodes[index].end) index++;
+      const first = nodes[index];
+      while (end >= nodes[index].end) index++;
+      const last = nodes[index];
+      const range = new Range();
+      range.setStart(first.node, start - first.start);
+      range.setEnd(last.node, end - last.start + 1);
+      return { range, target };
+    });
   }
   function updateSearch(move = false) {
-    const text = editor.value;
     const literal = query.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    matches = literal ? Array.from(text.matchAll(new RegExp(literal, "giu")), match => ({ start: match.index, end: match.index + match[0].length })) : [];
+    const pattern = literal && !search.hidden ? new RegExp(literal, "giu") : null;
+    const matches = pattern ? panes.flatMap(({ editor: target }) =>
+      target.parentElement.hidden ? [] : findRanges(target, pattern)) : [];
     matchIndex = matches.length ? (matchIndex + matches.length) % matches.length : 0;
     byId("notes-match-count").textContent = !query.value ? "" : matches.length ? `${matchIndex + 1} / ${matches.length}` : "无匹配";
     byId("notes-prev").disabled = byId("notes-next").disabled = !matches.length;
-    const fragment = document.createDocumentFragment();
-    let end = 0;
-    matches.forEach((match, index) => {
-      fragment.append(document.createTextNode(text.slice(end, match.start)));
-      const mark = document.createElement("mark");
-      mark.textContent = text.slice(match.start, match.end);
-      mark.classList.toggle("is-current", index === matchIndex);
-      fragment.append(mark);
-      end = match.end;
-    });
-    fragment.append(document.createTextNode(text.slice(end) + (text.endsWith("\n") ? "\u200b" : "")));
-    highlights.replaceChildren(fragment);
-    highlights.hidden = search.hidden || !matches.length;
-    syncHighlights();
-    if (move && !highlights.hidden) {
-      const current = highlights.querySelector(".is-current");
-      const y = current.getBoundingClientRect().top - highlights.getBoundingClientRect().top + highlights.scrollTop;
-      editor.scrollTop = Math.max(0, y - Math.max(search.offsetHeight + 20, editor.clientHeight / 3));
-      syncHighlights();
+    const current = matches[matchIndex];
+    if (globalThis.CSS?.highlights && typeof Highlight === "function") {
+      CSS.highlights.delete("forest-notes-found");
+      CSS.highlights.delete("forest-notes-current");
+      if (current) {
+        const others = new Highlight();
+        matches.forEach(({ range }, index) => { if (index !== matchIndex) others.add(range); });
+        CSS.highlights.set("forest-notes-found", others);
+        CSS.highlights.set("forest-notes-current", new Highlight(current.range));
+      }
+    }
+    if (move && current) {
+      const { target, range } = current;
+      const box = target.getBoundingClientRect();
+      const match = range.getBoundingClientRect();
+      const offset = match.top - box.top;
+      target.scrollTop = Math.max(0, target.scrollTop + offset - target.clientHeight / 3);
+      const afterScroll = range.getBoundingClientRect();
+      const viewport = dialog.getBoundingClientRect();
+      if (afterScroll.top < viewport.top || afterScroll.bottom > viewport.bottom) {
+        dialog.scrollTop += afterScroll.top - viewport.top - dialog.clientHeight / 3;
+      }
     }
   }
   function updateCounts() {
-    const count = editor.value.length;
+    const count = textCount();
     byId("notes-count").textContent = `${count} / ${limit}`;
     byId("notes-remaining").textContent = `${limit - count <= 500 ? "只剩" : "还能写"} ${limit - count} 字`;
     updateSearch();
   }
   function renderPage() {
-    const page = notes().pages.find(item => item.id === notes().activePageId);
+    const { activePageId, pages } = notes();
+    const page = pages.find(item => item.id === activePageId);
     if (!page) return;
     pageId = page.id;
-    editor.value = drafts.get(draftKey()) ?? page.content.slice(0, limit);
+    const data = { ...page, ...drafts.get(draftKey()) };
+    const content = data.content.slice(0, limit);
+    writing = {
+      title: pageName(data.title),
+      content, rightContent: typeof data.rightContent === "string" ? data.rightContent.slice(0, limit - content.length) : "",
+      html: typeof data.html === "string" ? data.html : "", rightHtml: typeof data.rightHtml === "string" ? data.rightHtml : "",
+      leftTitle: typeof data.leftTitle === "string" ? data.leftTitle.slice(0, 40) : "",
+      rightTitle: typeof data.rightTitle === "string" ? data.rightTitle.slice(0, 40) : "",
+      layout: data.layout === "split" ? "split" : "single",
+    };
+    pageTitle.value = writing.title;
+    activeEditor = editor;
+    savedRange = undefined;
+    renderLayout();
+    for (const pane of panes) {
+      renderEditor(pane);
+      pane.title.value = writing[pane.titleKey];
+    }
     byId("notes-date").textContent = label(page);
     byId("notes-date").dateTime = page.createdAt;
     matchIndex = 0;
     updateCounts();
+    updateBold();
     renderHistory();
-    try { editor.scrollTop = Number(localStorage.getItem(scrollKey())) || 0; } catch { editor.scrollTop = 0; }
-    syncHighlights();
+    try {
+      editor.scrollTop = Number(localStorage.getItem(scrollKey())) || 0;
+      rightEditor.scrollTop = Number(localStorage.getItem(scrollKey() + ":right")) || 0;
+    } catch {
+      editor.scrollTop = rightEditor.scrollTop = 0;
+    }
+    if (drafts.has(draftKey())) saveDraft();
   }
   function toggleSearch(open) {
     search.hidden = !open;
@@ -174,21 +310,127 @@
   byId("open-today-notes").addEventListener("click", openNotes);
   byId("cabin").addEventListener("click", openNotes);
   byId("notes-close").addEventListener("click", () => { saveDraft(); rememberScroll(); dialog.close(); });
-  dialog.addEventListener("close", () => { pendingDelete = ""; });
-  dialog.addEventListener("cancel", () => { saveDraft(); rememberScroll(); });
-  editor.addEventListener("input", () => {
-    updateCounts();
-    // Persist locally before account/world switches; existing save-sync debounces cloud uploads.
-    saveDraft();
+  dialog.addEventListener("close", () => {
+    if (dialog.open) return;
+    pendingDelete = "";
+    globalThis.CSS?.highlights?.delete("forest-notes-found");
+    globalThis.CSS?.highlights?.delete("forest-notes-current");
   });
-  editor.addEventListener("compositionend", () => { updateCounts(); saveDraft(); });
-  editor.addEventListener("blur", () => { if (dialog.open) saveDraft(); });
-  editor.addEventListener("scroll", () => { syncHighlights(); rememberScroll(); });
-  byId("notes-check").addEventListener("click", () => {
-    const available = limit - (editor.value.length - (editor.selectionEnd - editor.selectionStart));
-    if (available < "✅".length) return;
-    editor.setRangeText("✅", editor.selectionStart, editor.selectionEnd, "end");
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
+  dialog.addEventListener("cancel", () => { saveDraft(); rememberScroll(); });
+  const bold = byId("notes-bold");
+  function selectedRange() {
+    const selection = getSelection();
+    return selection.rangeCount ? selection.getRangeAt(0) : null;
+  }
+  function updateBold() {
+    const range = selectedRange();
+    const selected = range && activeEditor.contains(range.commonAncestorContainer);
+    bold.setAttribute("aria-pressed", String(Boolean(selected && document.queryCommandState("bold"))));
+  }
+  function rememberSelection() {
+    if (!dialog.open) return;
+    const range = selectedRange();
+    const pane = panes.find(({ editor: target }) => range && target.contains(range.commonAncestorContainer));
+    if (pane && document.activeElement === pane.editor) {
+      activeEditor = pane.editor;
+      savedRange = range.cloneRange();
+      updateBold();
+    }
+  }
+  function focusSelection() {
+    const range = savedRange && activeEditor.contains(savedRange.commonAncestorContainer) ? savedRange : new Range();
+    if (range !== savedRange) {
+      range.selectNodeContents(activeEditor);
+      range.collapse(false);
+    }
+    activeEditor.focus({ preventScroll: true });
+    const selection = getSelection();
+    const current = selectedRange();
+    if (!current || current.compareBoundaryPoints(Range.START_TO_START, range) || current.compareBoundaryPoints(Range.END_TO_END, range)) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+  function applyFormat(command, value) {
+    focusSelection();
+    // The browser's editing command preserves native selection and undo history.
+    document.execCommand(command, false, value);
+    rememberSelection();
+    updateBold();
+  }
+  function availableText(target) {
+    const range = selectedRange();
+    const selected = range && target.contains(range.commonAncestorContainer) ? getSelection().toString().length : 0;
+    return limit - textCount() + selected;
+  }
+  for (const pane of panes) {
+    const target = pane.editor;
+    target.addEventListener("focus", () => {
+      if (activeEditor !== target) savedRange = undefined;
+      activeEditor = target;
+    });
+    target.addEventListener("input", event => {
+      if (!event.isComposing) saveEditor(pane);
+    });
+    target.addEventListener("compositionend", () => saveEditor(pane));
+    target.addEventListener("beforeinput", event => {
+      if (event.isComposing || !event.inputType.startsWith("insert")) return;
+      if (event.inputType === "insertFromDrop" || (event.data?.length ?? 1) > availableText(target)) event.preventDefault();
+    });
+    target.addEventListener("paste", event => {
+      event.preventDefault();
+      const available = Math.max(0, availableText(target));
+      const value = (event.clipboardData?.getData("text/plain") ?? "").slice(0, available).replace(/[\ud800-\udbff]$/, "");
+      if (value) document.execCommand("insertText", false, value);
+    });
+    target.addEventListener("drop", event => event.preventDefault());
+    target.addEventListener("blur", () => {
+      if (!dialog.open) return;
+      saveDraft();
+      renderLayout();
+      updateSearch();
+    });
+    target.addEventListener("scroll", rememberScroll);
+    pane.title.addEventListener("input", () => edit({ [pane.titleKey]: pane.title.value }));
+    pane.title.addEventListener("blur", renderLayout);
+  }
+  document.addEventListener("selectionchange", rememberSelection);
+  const check = byId("notes-check");
+  const formatControls = { "notes-size": "fontSize", "notes-color": "foreColor", "notes-highlight": "hiliteColor" };
+  for (const control of [bold, check, ...Object.keys(formatControls).map(byId)]) {
+    control.addEventListener("pointerdown", rememberSelection);
+  }
+  for (const button of [bold, check]) button.addEventListener("mousedown", event => event.preventDefault());
+  bold.addEventListener("click", () => applyFormat("bold"));
+  for (const [id, command] of Object.entries(formatControls)) {
+    const control = byId(id);
+    control.addEventListener("change", () => {
+      if (control.value) applyFormat(command, control.value);
+      control.value = "";
+    });
+  }
+  check.addEventListener("click", () => {
+    focusSelection();
+    if (availableText(activeEditor) >= 1) document.execCommand("insertText", false, "✅");
+  });
+  layout.addEventListener("change", () => {
+    edit({ layout: layout.value });
+    renderLayout();
+    updateSearch();
+  });
+  function saveTitle() {
+    if (!dialog.open || !writing) return;
+    edit({ title: pageName(pageTitle.value) });
+    if (!history.hidden) renderHistory();
+  }
+  pageTitle.addEventListener("input", event => { if (!event.isComposing) saveTitle(); });
+  pageTitle.addEventListener("compositionend", saveTitle);
+  pageTitle.addEventListener("blur", () => {
+    if (writing) pageTitle.value = writing.title;
+  });
+  pageTitle.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || event.isComposing) return;
+    event.preventDefault();
     editor.focus({ preventScroll: true });
   });
   byId("notes-new").addEventListener("click", () => {
@@ -223,7 +465,6 @@
       event.preventDefault(); moveMatch(event.shiftKey ? -1 : 1);
     }
   });
-  new ResizeObserver(syncHighlights).observe(editor);
   window.addEventListener("pagehide", () => { if (dialog.open) { saveDraft(); rememberScroll(); } });
   window.addEventListener("beforeunload", event => {
     if (dialog.open) saveDraft();
@@ -232,7 +473,9 @@
   globalThis.refreshTodayNotes = () => {
     if (owner !== activeForestSave().key()) {
       dialog.close();
-      owner = ""; pageId = ""; editor.value = "";
+      owner = ""; pageId = ""; writing = undefined; savedRange = undefined;
+      pageTitle.value = "";
+      for (const pane of panes) { pane.editor.replaceChildren(); pane.title.value = ""; }
       search.hidden = history.hidden = true;
       query.value = "";
       byId("notes-find").setAttribute("aria-expanded", "false");

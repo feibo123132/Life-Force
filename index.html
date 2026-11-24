@@ -460,10 +460,10 @@
         </div>
         <div class="action-toolbar">
           <button class="action-add" id="add-action" type="button"><svg aria-hidden="true"><use href="#plus"/></svg>行动</button>
-          <button class="action-add" id="add-action-category" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#plus"/></svg>分类</button>
           <button class="action-edit-toggle" id="toggle-action-edit" type="button" aria-pressed="false" aria-controls="habits"><svg aria-hidden="true"><use href="#edit-action"/></svg>编辑</button>
           <button class="action-rank-open" id="open-leaderboard" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#rank"/></svg>排行榜</button>
           <button class="action-rank-open" id="open-activity-board" type="button" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#action-grid"/></svg>数据板</button>
+          <button id="open-ai-adventure-history" type="button" aria-haspopup="dialog" hidden><svg aria-hidden="true"><use href="#focus"/></svg><span>AI学习</span></button>
         </div>
         <p class="guide" id="action-status" role="status"></p>
         <p class="storage visually-hidden" id="storage-note" role="status">行动、植物与库存保存在此浏览器</p>
@@ -626,6 +626,85 @@
       </div>
     </form>
   </dialog>
+  <dialog id="ai-adventure-editor" class="adventure-dialog" aria-labelledby="ai-adventure-editor-title">
+    <div class="dialog-heading adventure-heading">
+      <img src="./assets/action-icons/study.webp" alt="">
+      <div><h2 id="ai-adventure-editor-title">AI大冒险</h2><p class="guide" id="ai-adventure-editor-day"></p></div>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭学习记录"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <form class="action-editor-form adventure-form" id="ai-adventure-form">
+      <label for="ai-adventure-title">标题</label>
+      <input id="ai-adventure-title" maxlength="100" required autofocus>
+      <label for="ai-adventure-body">正文</label>
+      <textarea id="ai-adventure-body" rows="5" maxlength="10000" required></textarea>
+      <div class="adventure-photo-field" role="group" aria-labelledby="ai-adventure-photo-label">
+        <img id="ai-adventure-photo-preview" alt="配图预览" hidden>
+        <div class="adventure-photo-controls">
+          <span id="ai-adventure-photo-label">配图 <small>选填</small></span>
+          <button class="purchase-cancel" id="ai-adventure-photo-choose" type="button">上传图片</button>
+          <button class="purchase-cancel" id="ai-adventure-photo-remove" type="button" hidden>移除图片</button>
+          <input id="ai-adventure-photo-file" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" aria-label="选择学习配图" hidden>
+        </div>
+        <p class="guide adventure-status" id="ai-adventure-photo-status" role="status"></p>
+      </div>
+      <div class="action-field-row">
+        <div>
+          <label for="ai-adventure-minutes">用时（分钟）</label>
+          <input id="ai-adventure-minutes" type="number" min="1" step="1" inputmode="numeric" required>
+        </div>
+        <div>
+          <label for="ai-adventure-score">宝藏指数 <small>选填</small></label>
+          <div class="adventure-score-row">
+            <input id="ai-adventure-score" type="number" min="80" max="100" step="1" inputmode="numeric" placeholder="80–100">
+            <output class="adventure-quality" id="ai-adventure-quality" for="ai-adventure-score" aria-live="polite"></output>
+          </div>
+        </div>
+      </div>
+      <p class="guide adventure-status" id="ai-adventure-status" role="status"></p>
+      <div class="action-editor-buttons adventure-buttons">
+        <button type="button" id="ai-adventure-skip">仅标记完成</button>
+        <button class="action-delete" type="button" id="ai-adventure-undo" hidden>取消当日完成</button>
+        <button class="primary" type="submit" id="ai-adventure-submit">保存并完成</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="ai-adventure-history" class="adventure-dialog" aria-labelledby="ai-adventure-history-title">
+    <div class="dialog-heading adventure-heading">
+      <img src="./assets/action-icons/study.webp" alt="">
+      <div><h2 id="ai-adventure-history-title" tabindex="-1">AI学习</h2><p class="guide">AI大冒险</p></div>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭AI学习"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <div class="adventure-filters">
+      <div class="adventure-periods" role="group" aria-label="查看周期">
+        <button type="button" data-ai-period="day" aria-pressed="true">日</button>
+        <button type="button" data-ai-period="week" aria-pressed="false">周</button>
+        <button type="button" data-ai-period="month" aria-pressed="false">月</button>
+        <button type="button" data-ai-period="quarter" aria-pressed="false">季</button>
+        <button type="button" data-ai-period="year" aria-pressed="false">年</button>
+      </div>
+      <div class="adventure-filter-fields">
+        <label>定位日期 <input type="date" id="ai-adventure-day"></label>
+        <label>排序 <select id="ai-adventure-sort"><option value="time">最新优先</option><option value="score">宝藏指数优先</option></select></label>
+      </div>
+    </div>
+    <div class="adventure-range">
+      <p class="guide" id="ai-adventure-range" aria-live="polite"></p>
+      <div class="adventure-record-toolbar" role="group" aria-label="记录操作">
+        <button type="button" data-adventure-mode="edit" aria-controls="ai-adventure-records" aria-pressed="false">编辑</button>
+        <button type="button" data-adventure-mode="delete" aria-controls="ai-adventure-records" aria-pressed="false">删除</button>
+      </div>
+    </div>
+    <div class="adventure-records" id="ai-adventure-records"></div>
+  </dialog>
+  <dialog id="ai-adventure-delete-dialog" aria-labelledby="ai-adventure-delete-title" aria-describedby="ai-adventure-delete-copy">
+    <div class="dialog-heading"><h2 id="ai-adventure-delete-title">删除学习记录</h2></div>
+    <p class="action-delete-confirm" id="ai-adventure-delete-copy"></p>
+    <p class="guide adventure-status" id="ai-adventure-delete-status" role="status"></p>
+    <form class="action-editor-buttons adventure-buttons" id="ai-adventure-delete-form" method="dialog">
+      <button class="purchase-cancel" type="submit" value="cancel" autofocus>取消</button>
+      <button class="action-delete" type="submit" value="delete">确认删除</button>
+    </form>
+  </dialog>
   <dialog id="action-editor" aria-labelledby="action-editor-title">
     <div class="dialog-heading">
       <h2 id="action-editor-title">新增行动</h2>
@@ -638,12 +717,16 @@
       <textarea id="action-description" maxlength="140" rows="5"></textarea>
       <div class="action-field-row">
         <div>
-          <label for="action-category">行动分类</label>
+          <div class="action-category-field-label">
+            <label for="action-category">行动分类</label>
+            <button id="add-action-category" type="button" aria-haspopup="dialog">＋新建</button>
+          </div>
           <select id="action-category" name="category"></select>
         </div>
         <div>
           <label for="action-repeat">重复频率</label>
-          <select id="action-repeat">
+          <select id="action-repeat" required>
+            <option value="" disabled selected>请选择重复频率</option>
             <option value="daily">每天</option>
             <option value="weekly">每周</option>
             <option value="once">仅今天</option>
@@ -661,6 +744,16 @@
           <span>次 / 周</span>
         </div>
       </div>
+      <div id="action-photo-field" role="group" aria-labelledby="action-photo-label" hidden>
+        <p id="action-photo-label">美食照片（选填）</p>
+        <img id="action-photo-preview" alt="美食照片预览" hidden>
+        <div class="action-photo-buttons">
+          <button class="purchase-cancel" id="choose-action-photo" type="button">上传图片</button>
+          <button class="purchase-cancel" id="remove-action-photo" type="button" hidden>移除图片</button>
+          <input id="action-photo-file" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" aria-label="选择美食照片" hidden>
+        </div>
+        <p class="guide" id="action-photo-status" role="status"></p>
+      </div>
       <div class="action-reward-row">
         <div>
           <label for="action-reward">生命力奖励（点）</label>
@@ -676,7 +769,7 @@
       </div>
       <div class="action-editor-buttons">
         <button class="action-delete" id="delete-action" type="button" hidden>删除行动</button>
-        <button class="primary" id="create-action" type="submit">添加</button>
+        <button class="primary" id="create-action" type="submit" disabled>添加</button>
       </div>
     </form>
     <div class="action-delete-confirm" id="action-delete-confirm" hidden>
@@ -687,6 +780,13 @@
       </div>
     </div>
     <p class="guide" id="action-editor-status" role="status"></p>
+  </dialog>
+  <dialog id="action-photo-dialog" aria-labelledby="action-photo-title">
+    <div class="dialog-heading">
+      <h2 id="action-photo-title">美食照片</h2>
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭照片"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+    </div>
+    <img id="action-photo-image" alt="美食照片">
   </dialog>
   <dialog class="shop" id="shop" aria-labelledby="shop-title">
     <div class="shop-stall">
@@ -753,7 +853,10 @@
         </section>
       </section>
       <footer>
-        <button id="plant-picker-confirm" type="button" aria-describedby="plant-picker-status"><svg aria-hidden="true"><use href="#sprout"/></svg>立即种植</button>
+        <div class="plant-picker-actions">
+          <button id="plant-picker-confirm" type="button" aria-describedby="plant-picker-status"><svg aria-hidden="true"><use href="#sprout"/></svg>种植</button>
+          <button id="plant-picker-sow" type="button" aria-describedby="plant-picker-status"><svg aria-hidden="true"><use href="#sprout"/></svg>撒种</button>
+        </div>
         <p id="plant-picker-status" role="status"></p>
       </footer>
     </div>
@@ -796,15 +899,48 @@
     </header>
     <section class="notes-paper" aria-label="今日事笔记本">
       <div class="notes-toolbar" role="group" aria-label="笔记工具">
-        <time id="notes-date"></time><span id="notes-count">0 / 10000</span>
+        <div class="notes-page-heading">
+          <input id="notes-page-title" type="text" maxlength="60" aria-label="本页名称" placeholder="给这一页命名">
+          <time id="notes-date"></time>
+        </div>
+        <span id="notes-count">0 / 10000</span>
         <button id="notes-find" type="button" aria-label="查找本页（Ctrl+F）" aria-expanded="false">⌕ <span>查找</span></button>
         <button id="notes-check" type="button" aria-label="在光标处插入勾号">✅</button>
         <button id="notes-new" class="notes-new-button" type="button">＋ 新建一页</button>
         <button id="notes-history-toggle" type="button" aria-expanded="false" aria-controls="notes-history">历史 1</button>
       </div>
+      <div class="notes-format" role="group" aria-label="文字格式和版式">
+        <button id="notes-bold" type="button" aria-label="加粗" aria-pressed="false" title="加粗（Ctrl+B）">B</button>
+        <select id="notes-size" aria-label="字号">
+          <option value="" selected disabled>字号</option>
+          <option value="2">14 · 小</option>
+          <option value="3">16 · 正文</option>
+          <option value="4">18 · 大</option>
+          <option value="5">22 · 更大</option>
+          <option value="6">28 · 特大</option>
+        </select>
+        <select id="notes-color" aria-label="文字颜色">
+          <option value="" selected disabled>文字颜色</option>
+          <option value="#614326">默认</option>
+          <option value="#245eb0">蓝色</option>
+          <option value="#2f6f41">绿色</option>
+          <option value="#aa332f">红色</option>
+          <option value="#a44b12">橙色</option>
+        </select>
+        <select id="notes-highlight" aria-label="高亮颜色">
+          <option value="" selected disabled>高亮</option>
+          <option value="#ffe399">暖黄</option>
+          <option value="#d6ecab">嫩绿</option>
+          <option value="#cbe7fa">浅蓝</option>
+          <option value="#f9d7db">淡粉</option>
+          <option value="transparent">无高亮</option>
+        </select>
+        <select id="notes-layout" aria-label="本页版式">
+          <option value="single">单栏</option>
+          <option value="split">双栏对照</option>
+        </select>
+      </div>
       <div class="notes-writing">
-        <textarea id="notes-editor" class="notes-text" maxlength="10000" aria-label="今日事内容" spellcheck="false" placeholder="写下今天的安排、灵感，或那些想记住的小事……&#10;&#10;内容自动保存，不会每天清空。想开启新的一页时，点击「新建一页」。"></textarea>
-        <div id="notes-highlights" class="notes-text" aria-hidden="true" hidden></div>
         <div id="notes-search" role="search" aria-label="查找本页" hidden>
           <input id="notes-query" type="search" placeholder="查找本页" aria-label="查找文字" autocomplete="off">
           <output id="notes-match-count" aria-live="polite"></output>
@@ -812,8 +948,18 @@
           <button id="notes-next" type="button" aria-label="下一个匹配">↓</button>
           <button id="notes-search-close" type="button" aria-label="关闭查找">×</button>
         </div>
+        <div id="notes-columns" class="notes-columns" data-layout="single">
+          <div class="notes-column">
+            <input id="notes-left-title" class="notes-column-title" type="text" maxlength="40" aria-label="左栏标题" placeholder="左栏" hidden>
+            <div id="notes-editor" class="notes-text" contenteditable="true" role="textbox" aria-multiline="true" aria-label="今日事正文" spellcheck="false" data-placeholder="写下今天的安排、灵感，或那些想记住的小事……"></div>
+          </div>
+          <div class="notes-column" hidden>
+            <input id="notes-right-title" class="notes-column-title" type="text" maxlength="40" aria-label="右栏标题" placeholder="右栏">
+            <div id="notes-right-editor" class="notes-text" contenteditable="true" role="textbox" aria-multiline="true" aria-label="右栏正文" spellcheck="false" data-placeholder="在这里写下另一边的内容……"></div>
+          </div>
+        </div>
       </div>
-      <footer class="notes-footer"><span id="notes-save-status" role="status">自动保存已开启</span><span id="notes-remaining"></span><span>纯文本 · 内容随庄园账号同步</span></footer>
+      <footer class="notes-footer"><span id="notes-save-status" role="status">自动保存已开启</span><span id="notes-remaining"></span><span>内容和格式随庄园账号同步</span></footer>
       <section id="notes-history" aria-label="历史页面" hidden><p>点选一页继续书写，旧内容都会保留。</p><div id="notes-pages"></div></section>
     </section>
   </dialog>
