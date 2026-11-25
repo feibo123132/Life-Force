@@ -752,16 +752,31 @@ function showActions() {
   el.actions.showModal();
 }
 
-// 行动在某天是否「排了这个班」：日抛行动只在它被创建的那一天出现。
-// 行动面板与行动日历必须共用这一口径，否则日抛行动一过零点就会从日历里消失。
-function actionScheduledOn(habit, date) {
-  return !habit.onlyOn || habit.onlyOn === date;
+// 「仅今天」的灵感沿用已有的完成记录，旧存档无需补写状态。
+function inspirationCompletedOn(habit, entries = state.entries) {
+  if (habit.category !== "inspiration") return undefined;
+  if (!habit.onlyOn) return habit.inspirationFinishedOn;
+  let completedOn;
+  for (const entry of entries) {
+    if (entry.kind === habit.id && !entry.weekly && entry.date >= habit.onlyOn &&
+      (!completedOn || entry.date < completedOn)) completedOn = entry.date;
+  }
+  return completedOn;
 }
 
-// 某天还能不能勾选/取消：只要不是未来日期、且这天确实排了这项行动就行。
-// 日抛行动也允许事后补记 —— 漏点不是没做，日期不能倒流但不该阻止如实记录。
+// 行动面板与日历共享同一套排期。灵感从开始日期保留到完成当天。
+function actionScheduledOn(habit, date, entries = state.entries) {
+  if (habit.category !== "inspiration") return !habit.onlyOn || habit.onlyOn === date;
+  const completedOn = inspirationCompletedOn(habit, entries);
+  return (!habit.onlyOn || habit.onlyOn <= date) && (!completedOn || date <= completedOn);
+}
+
+// 历史行动可以补记，已完成的一次性灵感只允许撤回已有记录。
 function actionAvailableOn(habit, date, today) {
-  return actionVisibleOn(habit, date) && date <= today;
+  if (date > today || !actionVisibleOn(habit, date)) return false;
+  const completedOn = habit.onlyOn && inspirationCompletedOn(habit);
+  return !completedOn || date === completedOn
+    || state.entries.some(entry => entry.kind === habit.id && entry.date === date && !entry.weekly);
 }
 
 function actionVisibleOn(habit, date) {
@@ -776,7 +791,7 @@ function habitRepeat(habit) {
 
 function repeatLabel(habit) {
   const repeat = habitRepeat(habit);
-  if (repeat === "once") return "今日限定";
+  if (repeat === "once") return habit.category === "inspiration" ? "完成前每天" : "今日限定";
   if (repeat === "weekly") return `每周 ${habit.weeklyTarget} 次`;
   return "每天";
 }
@@ -951,9 +966,10 @@ function habitDetailText(habit, day, weekDone = 0) {
   const parts = [];
   if (repeat === "weekly") {
     parts.push(`${viewingPast ? "当周" : "本周"} ${weekDone}/${habit.weeklyTarget}${weekDone >= habit.weeklyTarget ? " · 已达标" : ""}`);
-  } else if (repeat === "once") {
+  } else if (repeat === "once" && habit.category !== "inspiration") {
     parts.push(viewingPast ? "当天限定" : "仅今天");
   }
+  if (!habit.onlyOn && habit.category === "inspiration" && habit.inspirationFinishedOn === day) parts.push("灵感已完成");
   parts.push(actionPraiseLabel(habit.praiseScore), habit.description);
   const entry = state.entries.find(item => item.kind === habit.id && item.date === day && !item.weekly);
   parts.push(activityRecordSummary(entry));
@@ -966,10 +982,11 @@ function renderActionCalendar() {
   let nextFocus;
   const totals = dailyActionTotals(state.entries);
   // 日历上的「完成」= 当天的日常行动都做完了（周常按周另算）。
-  const dailyIds = new Set(state.habits.filter(habit => habitRepeat(habit) === "daily").map(habit => habit.id));
+  const dailyHabits = new Map(state.habits.filter(habit => habitRepeat(habit) === "daily").map(habit => [habit.id, habit]));
   const dailyDoneByDate = new Map();
   for (const entry of state.entries) {
-    if (!entry.date || !dailyIds.has(entry.kind)) continue;
+    const habit = dailyHabits.get(entry.kind);
+    if (!entry.date || !habit || !actionScheduledOn(habit, entry.date)) continue;
     dailyDoneByDate.set(entry.date, (dailyDoneByDate.get(entry.date) ?? 0) + 1);
   }
   const days = [];
@@ -980,7 +997,8 @@ function renderActionCalendar() {
   while (date.getUTCMonth() === month) {
     const key = date.toISOString().slice(0, 10);
     const completed = totals.get(key) ?? 0;
-    const complete = dailyIds.size > 0 && (dailyDoneByDate.get(key) ?? 0) >= dailyIds.size;
+    const dailyGoal = [...dailyHabits.values()].filter(habit => actionScheduledOn(habit, key)).length;
+    const complete = dailyGoal > 0 && (dailyDoneByDate.get(key) ?? 0) >= dailyGoal;
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = date.getUTCDate();
@@ -1033,7 +1051,8 @@ function renderActionCalendar() {
     const label = document.createElement("span");
     // 周常打卡不给生命力，文案说清「已打卡 / 已达标」，别写成 +N。
     // 日抛行动在历史那天补记时点明「补记」，和当天的「标记完成」区分开。
-    const status = entry?.source === "finance-link" ? "自动完成"
+    const status = !actionable ? "已在其它日期完成"
+      : entry?.source === "finance-link" ? "自动完成"
       : repeat === "weekly"
         ? (weekMet ? "已达标" : entry ? "已打卡" : `达标可得 +${actionReward(habit)}`)
         : entry ? "已完成"
@@ -1591,6 +1610,12 @@ function actionPraiseLabel(score) {
   return tier < 0 ? "" : `${actionPraiseQualities[tier]} · ${score} 分`;
 }
 
+function updateActionPraiseQuality(score) {
+  const quality = el["action-praise-quality"];
+  quality.dataset.tier = actionPraiseTier(score);
+  quality.value = actionPraiseLabel(score);
+}
+
 function actionPhoto(habit) {
   const photo = habit?.photo;
   return typeof photo === "string" && photo.startsWith("data:image/jpeg;base64,") ? photo : undefined;
@@ -1624,7 +1649,9 @@ function renderHabits(day = todayKey()) {
     button.type = "button";
     button.className = "habit";
     button.dataset.kind = habit.id;
-    if (isAiAdventure(habit)) button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-label", `编辑「${habit.name}」`);
+    button.addEventListener("click", () => openActionEditor(habit.id));
     const artwork = document.createElement("span");
     artwork.className = "habit-art";
     artwork.append(actionCategoryArtwork(category));
@@ -1664,12 +1691,13 @@ function renderHabits(day = todayKey()) {
     spark.setAttribute("aria-hidden", "true");
     const rewardAmount = document.createElement("span");
     reward.append(spark, rewardAmount);
-    const control = document.createElement("span");
+    const control = document.createElement("button");
+    control.type = "button";
     control.className = "action-art habit-control";
-    control.setAttribute("aria-hidden", "true");
-    side.append(reward, control);
+    control.setAttribute("aria-label", `完成「${habit.name}」`);
+    control.addEventListener("click", () => toggleActionCompletion(habit.id, day));
+    side.append(reward);
     button.append(artwork, chip, copy, side);
-    button.addEventListener("click", () => toggleActionCompletion(habit.id, day));
 
     const edit = document.createElement("button");
     edit.type = "button";
@@ -1678,26 +1706,18 @@ function renderHabits(day = todayKey()) {
     edit.setAttribute("aria-label", `编辑${habit.name}`);
     edit.innerHTML = icon("edit-action");
     edit.addEventListener("click", () => openActionEditor(habit.id));
-    row.append(button);
     const photo = actionPhoto(habit);
     if (photo) {
-      const view = document.createElement("button");
-      view.type = "button";
-      view.className = "action-photo-open";
-      view.title = "查看照片";
-      view.setAttribute("aria-label", `查看「${habit.name}」的照片`);
-      view.setAttribute("aria-haspopup", "dialog");
       const thumbnail = document.createElement("img");
+      thumbnail.className = "habit-photo";
       thumbnail.src = photo;
       thumbnail.alt = "";
       thumbnail.loading = "lazy";
-      view.append(thumbnail);
-      view.addEventListener("click", () => openActionPhoto(habit.name, photo, "美食照片"));
-      row.append(view);
+      side.prepend(thumbnail);
     }
-    row.append(edit);
+    row.append(button, control, edit);
     el.habits.append(row);
-    habitButtons.set(habit.id, { row, button, edit, rewardAmount, description });
+    habitButtons.set(habit.id, { row, button, control, edit, rewardAmount, description });
   }
   filterHabits();
 }
@@ -1732,10 +1752,12 @@ function openActionEditor(id) {
   el["action-only-date"].value = habit?.onlyOn ?? day;
   el["action-weekly-target"].value = habit?.weeklyTarget ?? 4;
   updateActionRepeatFields();
+  el["action-inspiration-completed"].checked = false;
+  renderActionInspirationField(habit);
   renderActionPhotoField();
   el["action-reward"].value = actionReward(habit);
   el["action-praise"].value = habit?.praiseScore ?? "";
-  el["action-praise-quality"].value = actionPraiseLabel(habit?.praiseScore);
+  updateActionPraiseQuality(habit?.praiseScore);
   el["action-editor-status"].textContent = "";
   el["delete-action"].hidden = !habit;
   el["create-action"].hidden = Boolean(habit);
@@ -1754,6 +1776,14 @@ function updateActionRepeatFields() {
   el["action-once-row"].hidden = !once;
   el["action-only-date"].disabled = !once;
   updateActionCreateButton();
+}
+
+function renderActionInspirationField(habit) {
+  const inspiration = el["action-category"].value === "inspiration";
+  const checkbox = el["action-inspiration-completed"];
+  el["action-inspiration-row"].hidden = checkbox.disabled = !inspiration;
+  el["action-only-date-label"].textContent = inspiration ? "开始日期" : "限定日期";
+  if (habit || !inspiration) checkbox.checked = inspiration && Boolean(habit && inspirationCompletedOn(habit));
 }
 
 el["action-repeat"].addEventListener("input", updateActionRepeatFields);
@@ -1790,6 +1820,7 @@ function renderActionPhotoField() {
   el["choose-action-photo"].hidden = !food;
   el["choose-action-photo"].textContent = photo ? "更换图片" : "上传图片";
   el["choose-action-photo"].disabled = busy;
+  el["view-action-photo"].hidden = !photo;
   el["remove-action-photo"].hidden = !photo;
   el["remove-action-photo"].disabled = busy;
   updateActionCreateButton();
@@ -1798,6 +1829,13 @@ function renderActionPhotoField() {
   if (photo) preview.src = photo;
   else preview.removeAttribute("src");
 }
+
+el["view-action-photo"].addEventListener("click", () => {
+  const photo = el["action-photo-preview"].getAttribute("src");
+  if (photo && editingHabitContext?.saveKey === activeForestSave().key()) {
+    openActionPhoto(el["action-name"].value.trim() || "美食照片", photo, "美食照片");
+  }
+});
 
 async function compressActionPhoto(file) {
   const bitmap = await createImageBitmap(file);
@@ -1906,45 +1944,40 @@ el["toggle-action-edit"].addEventListener("click", () => {
   setActionEditMode(!el.habits.classList.contains("is-editing"));
 });
 el["add-action"].addEventListener("click", () => openActionEditor());
-const categoryName = el["action-category-name"];
-el["add-action-category"].addEventListener("click", () => {
-  categoryName.value = "";
-  categoryName.setCustomValidity("");
-  el["action-category-status"].textContent = "";
-  el["action-category-dialog"].showModal();
-});
-categoryName.addEventListener("input", () => categoryName.setCustomValidity(""));
-el["action-category-form"].addEventListener("submit", event => {
-  event.preventDefault();
-  const label = actionCategoryLabel(categoryName.value.trim());
-  if (!label || [...actionCategories.values()].includes(label)) {
-    categoryName.setCustomValidity(label ? "这个分类已存在。" : "请输入分类名称。");
-    categoryName.reportValidity();
-    return;
-  }
-  const id = `custom-${crypto.randomUUID?.() ?? `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`}`;
-  const previous = state.customActionCategories;
-  state.customActionCategories = [...previous, { id, label }];
-  if (!saveState()) {
-    state.customActionCategories = previous;
-    el["action-category-status"].textContent = "浏览器无法保存此次修改。";
-    return;
-  }
-  actionFilter = id;
-  renderActionCategories();
-  filterHabits();
-  el.habits.scrollTop = 0;
-  el["action-category-dialog"].close();
-  const tabs = el["action-categories"];
-  tabs.scrollLeft = tabs.scrollWidth;
-});
 el["open-action-log"].addEventListener("click", () => showJournal());
 const actionPraiseInput = el["action-praise"];
+const inspirationCompletionInput = el["action-inspiration-completed"];
+inspirationCompletionInput.addEventListener("input", () => {
+  if (!editingHabit) return;
+  const habit = state.habits.find(item => item.id === editingHabit);
+  const status = el["action-editor-status"];
+  if (editingHabitContext?.saveKey !== activeForestSave().key()) {
+    status.textContent = "当前存档已切换，请关闭后重新打开。";
+  } else if (habit?.category === "inspiration") {
+    const completedOn = inspirationCompletedOn(habit);
+    const { checked } = inspirationCompletionInput;
+    const { day } = editingHabitContext;
+    if (checked !== Boolean(completedOn)) {
+      if (habit.onlyOn) {
+        const date = completedOn || (habit.onlyOn > day ? habit.onlyOn : day);
+        toggleActionCompletion(habit.id, date, status, true);
+      } else {
+        const habits = state.habits.map(item => item === habit
+          ? { ...item, inspirationFinishedOn: checked ? day : undefined } : item);
+        if (saveHabits(habits)) status.textContent = checked ? "已完成" : "已恢复提醒";
+      }
+    }
+  }
+  renderActionInspirationField(state.habits.find(item => item.id === editingHabit));
+});
+
 el["action-editor-form"].addEventListener("input", event => {
-  if (event.target === el["action-photo-file"]) return;
-  if (event.target === el["action-category"]) renderActionPhotoField();
-  const praiseLabel = actionPraiseLabel(actionPraiseInput.valueAsNumber);
-  el["action-praise-quality"].value = praiseLabel;
+  if (event.target === el["action-photo-file"] || event.target === inspirationCompletionInput) return;
+  if (event.target === el["action-category"]) {
+    renderActionPhotoField();
+    renderActionInspirationField(state.habits.find(item => item.id === editingHabit));
+  }
+  updateActionPraiseQuality(actionPraiseInput.valueAsNumber);
   const name = el["action-name"].value.trim();
   el["action-name"].setCustomValidity(name ? "" : "请输入行动名称。");
   if (!editingHabit) return;
@@ -1983,9 +2016,14 @@ el["action-editor-form"].addEventListener("input", event => {
   }
   const onlyOn = repeat === "once" ? el["action-only-date"].value : undefined;
   const weeklyTarget = repeat === "weekly" ? el["action-weekly-target"].valueAsNumber : undefined;
-  const praiseScore = praiseLabel ? actionPraiseInput.valueAsNumber : undefined;
-  const habits = state.habits.map(item => item === habit ? { ...item, name, description, category, reward, onlyOn, weeklyTarget, praiseScore } : item);
-  if (saveHabits(habits)) el["action-editor-status"].textContent = "已保存";
+  const praiseScore = actionPraiseInput.value ? actionPraiseInput.valueAsNumber : undefined;
+  const inspirationFinishedOn = category === "inspiration" && !onlyOn ? habit.inspirationFinishedOn : undefined;
+  const updated = { ...habit, name, description, category, reward, onlyOn, weeklyTarget, praiseScore, inspirationFinishedOn };
+  const habits = state.habits.map(item => item === habit ? updated : item);
+  if (saveHabits(habits)) {
+    el["action-editor-status"].textContent = "已保存";
+    renderActionInspirationField(updated);
+  }
 });
 el["action-editor-form"].addEventListener("submit", event => {
   event.preventDefault();
@@ -2023,8 +2061,14 @@ el["action-editor-form"].addEventListener("submit", event => {
   if (category === "food" && editingHabitContext.loadingPhoto) return;
   const photo = category === "food" ? editingHabitContext.photo : undefined;
   const habit = { id, name, description, category, reward, onlyOn, weeklyTarget, praiseScore, photo };
+  const entries = [...state.entries];
+  if (category === "inspiration" && inspirationCompletionInput.checked) {
+    const { day } = editingHabitContext;
+    if (onlyOn) addActionEntry(habit, onlyOn > day ? onlyOn : day, undefined, { ...state, entries });
+    else habit.inspirationFinishedOn = day;
+  }
   const habits = [...state.habits, habit];
-  if ((!photo || actionPhotoFits(habits)) && saveHabits(habits)) el["action-editor"].close();
+  if ((!photo || actionPhotoFits(habits)) && saveHabits(habits, entries)) el["action-editor"].close();
 });
 el["delete-action"].addEventListener("click", () => {
   const habit = state.habits.find(item => item.id === editingHabit);
@@ -2053,8 +2097,11 @@ el["action-editor"].addEventListener("close", () => {
   el["action-photo-preview"].removeAttribute("src");
   if (!el.actions.open) return;
   const habit = habitButtons.get(editingHabit);
-  const edit = el.habits.classList.contains("is-editing") && habit && !habit.row.hidden && habit.edit;
-  (edit || el["add-action"]).focus();
+  if (habit && !habit.row.hidden) {
+    if (!habit.row.contains(document.activeElement)) habit.button.focus();
+  } else {
+    el["add-action"].focus();
+  }
 });
 
 function playerLevel(xp = state.player.xp) {
@@ -2158,10 +2205,11 @@ function updateControls() {
   for (const habit of state.habits) {
     const controls = habitButtons.get(habit.id);
     if (!controls) continue;
-    const { button, edit, rewardAmount, description, row } = controls;
+    const { button, control, edit, rewardAmount, description, row } = controls;
     const entry = completed.get(habit.id);
     const done = Boolean(entry);
     const repeat = habitRepeat(habit);
+    const actionable = habit.category !== "inspiration" || repeat !== "once" || actionAvailableOn(habit, day, today);
     // 周常的打卡记录不带生命力，行内始终展示这项行动的奖励额度。
     const reward = repeat === "weekly" ? actionReward(habit) : actionReward(entry ?? habit);
     const weekTarget = repeat === "weekly" ? habit.weeklyTarget : 0;
@@ -2172,7 +2220,7 @@ function updateControls() {
       weeklyCount++;
       weekGoal += weekTarget;
       weekDone += Math.min(weekProgress, weekTarget);
-    } else {
+    } else if (actionable || done) {
       goal++;
       if (done) completedCount++;
       else earnableReward += reward;
@@ -2183,21 +2231,26 @@ function updateControls() {
       description.title = text;
     }
     row.dataset.week = weekMet ? "done" : "";
-    button.setAttribute("aria-pressed", String(done));
-    button.setAttribute("aria-label", habit.name);
+    control.disabled = !actionable;
+    control.setAttribute("aria-pressed", String(done));
     button.setAttribute("aria-description", [
       actionCategories.get(habitCategory(habit)),
       repeatLabel(habit),
-      repeat === "weekly" ? `本周 ${weekProgress}/${weekTarget}` : habit.onlyOn && "仅今天",
+      repeat === "weekly" ? `本周 ${weekProgress}/${weekTarget}` : "",
       weekMet ? "本周已达标" : repeat === "weekly" ? `达标后一次性获得 ${reward} 点生命力` : "",
       actionPraiseLabel(habit.praiseScore),
       habit.description,
       activityRecordSummary(entry),
       repeat === "weekly" ? "" : `${reward} 点生命力`,
     ].filter(Boolean).join("，"));
-    button.title = entry?.source === "finance-link" ? "已由存钱罐自动完成"
+    const activityConfig = activityRecordConfig(habit);
+    const opensRecord = activityConfig && (day === today || entry?.[activityConfig.key]);
+    if (isAiAdventure(habit) || opensRecord) control.setAttribute("aria-haspopup", "dialog");
+    else control.removeAttribute("aria-haspopup");
+    control.title = control.disabled ? "已在其它日期完成"
+      : entry?.source === "finance-link" ? "已由存钱罐自动完成"
       : isAiAdventure(habit) ? done ? "追加学习记录" : "填写学习记录并完成"
-      : activityRecordConfig(habit) && (day === today || entry?.[activityRecordConfig(habit).key]) ? done ? "查看或修改当天记录" : "填写记录并完成"
+      : opensRecord ? done ? "查看或修改当天记录" : "填写记录并完成"
       : done ? "取消完成" : weekMet ? "继续记录，本周奖励已结算" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
     const rewardBox = rewardAmount.parentElement;
@@ -2473,6 +2526,7 @@ const activityRecordTypes = {
   workout: { key: "workout", label: "训练", fields: [
     ["pushups", "俯卧撑", "次"], ["situps", "仰卧起坐", "次"], ["backExtensions", "仰背", "次"],
     ["dumbbell", "哑铃", "次"], ["pullups", "引体向上", "次"], ["cableAbs", "滑轮练腹", "次"],
+    ["burpees", "波比跳", "组"],
   ] },
   guitar: { key: "guitar", label: "练习", fields: [
     ["recording", "录歌", "首"], ["chorus", "合唱", "首"], ["bench", "板凳", "首"],
@@ -2849,7 +2903,7 @@ function openWorkout(habit, date, status, entry) {
   const config = activityRecordConfig(habit);
   workoutContext = { kind: habit.id, field: config.key, date, status, saveKey: activeForestSave().key(), entry: JSON.stringify(entry) };
   el["workout-title"].textContent = `${habit.name} · ${config.label}记录`;
-  el["workout-guide"].textContent = `填写本次${config.label}${config.key === "workout" ? "次数" : "数值"}，没做的项目可留空。`;
+  el["workout-guide"].textContent = `填写本次${config.label}的${config.key === "workout" ? "次数或组数" : "数值"}，没做的项目可留空。`;
   el["workout-date"].textContent = `${date} · ${repeatLabel(habit)}`;
   el["workout-status"].textContent = "";
   el["workout-save"].textContent = entry ? "保存修改" : "保存并完成";
@@ -2874,7 +2928,7 @@ el["workout-form"].addEventListener("submit", event => {
     const input = el["workout-form"].elements.namedItem(id);
     const value = input.value === "" ? 0 : input.valueAsNumber;
     if (!Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER || (unit !== "min" && !Number.isSafeInteger(value))) {
-      el["workout-status"].textContent = config.key === "workout" ? "次数请填写大于等于 0 的整数。" : "首数请填写非负整数，分钟可填非负小数。";
+      el["workout-status"].textContent = config.key === "workout" ? "次数和组数请填写大于等于 0 的整数。" : "首数请填写非负整数，分钟可填非负小数。";
       return;
     }
     if (value > 0) workout[id] = value;
@@ -3281,11 +3335,17 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
     status.textContent = "浏览器无法保存，取消完成失败。";
     return;
   }
-  renderOrbs();
-  updateControls();
+  refreshActionCompletion(habit, date);
   const spentByEntry = countSpentEnergyByEntry(spent);
   const deducted = remainingEntryEnergy(entry, spentByEntry) + (award ? remainingEntryEnergy(award, spentByEntry) : 0);
   status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
+}
+
+function refreshActionCompletion(habit, date) {
+  const visibleDay = actionEditorDay();
+  if (habit.category === "inspiration" && habit.onlyOn && date !== visibleDay) renderHabits(visibleDay);
+  renderOrbs();
+  updateControls();
 }
 
 function addActionEntry(habit, date, source, snapshot = state) {
@@ -3323,8 +3383,7 @@ function record(habit, date, status, details, snapshot = state, validateSnapshot
     return false;
   }
   state = snapshot;
-  renderOrbs();
-  updateControls();
+  refreshActionCompletion(habit, date);
   if (weekly) {
     const done = weeklyDone(habit, date);
     status.textContent = award
@@ -3342,7 +3401,7 @@ function applyFinanceLink({ date, recorded, happy }) {
   if (recorded !== true) return true;
   const snapshot = inExperiment ? readState() : state;
   const previousLength = snapshot.entries.length;
-  const habit = snapshot.habits.find(item => item.name.trim() === "伊比理财" && actionScheduledOn(item, date));
+  const habit = snapshot.habits.find(item => item.name.trim() === "伊比理财" && actionScheduledOn(item, date, snapshot.entries));
   const completed = habit && !snapshot.entries.some(entry => entry.date === date && entry.kind === habit.id);
   if (completed) addActionEntry(habit, date, "finance-link", snapshot);
 
