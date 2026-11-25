@@ -2669,6 +2669,9 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
   border: 0;
   border-radius: 20px;
   overflow: visible;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   background: #fff;
   color: #222e56;
   box-shadow: 0 16px 52px #111c4566;
@@ -2739,7 +2742,7 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
 .life-transfer-voices button[aria-pressed="true"] { background: #344882; border-color: #344882; color: #fff; }
 .life-transfer-amounts button:hover { filter: brightness(.95); }
 .life-transfer-amounts svg { width: 14px; height: 14px; color: #927020; fill: #ffe59c; }
-.yibi-transfer-button { position: relative; isolation: isolate; touch-action: none; user-select: none; -webkit-touch-callout: none; }
+.yibi-transfer-button { position: relative; isolation: isolate; touch-action: none; }
 .yibi-transfer-button > :is(svg, #yibi-transfer-label) { position: relative; }
 .yibi-transfer-button[data-phase="charge"] { border-color: #c7a565; background: #fff5dc; color: #63451a; cursor: progress; }
 .yibi-transfer-button[data-phase="burst"] { animation: yibi-release-button 420ms ease-out; }
@@ -2938,6 +2941,9 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
 .life-transfer-form label { font-size: 13px; font-weight: 700; }
 .life-transfer-form label span, #life-transfer-status { color: #526082; font-weight: 400; }
 #life-transfer-message {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
   width: 100%;
   min-height: 58px;
   padding: 8px 10px;

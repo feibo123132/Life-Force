@@ -4465,14 +4465,18 @@ function unlockYibiAudio() {
   } catch { /* The transfer still works without generated effects. */ }
 }
 
-function yibiTone(context, start, duration, frequency, endFrequency, volume, type = "sine", attack = 0.018) {
+function yibiTone(context, start, duration, frequency, endFrequency, volume, {
+  type = "sine", attack = 0.018, sweep = duration, decay,
+} = {}) {
   const tone = context.createOscillator();
   const gain = context.createGain();
+  const peak = volume * yibiEffectVolume;
   tone.type = type;
   tone.frequency.setValueAtTime(frequency, start);
-  tone.frequency.exponentialRampToValueAtTime(endFrequency, start + duration);
+  tone.frequency.exponentialRampToValueAtTime(endFrequency, start + sweep);
   gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.linearRampToValueAtTime(volume * yibiEffectVolume, start + attack);
+  gain.gain.linearRampToValueAtTime(peak, start + attack);
+  if (decay) gain.gain.exponentialRampToValueAtTime(peak * decay.level, start + decay.time);
   gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
   tone.connect(gain);
   gain.connect(context.destination);
@@ -4487,8 +4491,8 @@ function playYibiChargeSound(context) {
   const start = context.currentTime;
   const duration = yibiChargeDuration / 1000;
   const tones = [
-    yibiTone(context, start, duration, 196, 587, 0.045, "triangle", duration - 0.05),
-    yibiTone(context, start + 0.28, duration - 0.28, 392, 1174, 0.022, "sine", duration - 0.33),
+    yibiTone(context, start, duration, 196, 587, 0.045, { type: "triangle", attack: duration - 0.05 }),
+    yibiTone(context, start + 0.28, duration - 0.28, 392, 1174, 0.022, { attack: duration - 0.33 }),
   ];
   const notes = [[0.38, 523], [0.85, 659], [1.33, 784], [1.72, 988]];
   for (const [offset, frequency] of notes) {
@@ -4502,10 +4506,18 @@ function playYibiChargeSound(context) {
 function playYibiBurstSound(context) {
   if (!context) return;
   const start = context.currentTime;
-  yibiTone(context, start, 0.22, 196, 64, 0.09, "triangle");
-  yibiTone(context, start + 0.02, 0.29, 1047, 1047, 0.054);
-  yibiTone(context, start + 0.055, 0.32, 1319, 1319, 0.039);
-  yibiTone(context, start + 0.085, 0.32, 1568, 1568, 0.033);
+  // The short upper hit stays audible on small speakers while the sine tail supplies the weight.
+  yibiTone(context, start, 0.38, 138, 47, 0.117, { attack: 0.006, sweep: 0.074, decay: { time: 0.19, level: 0.28 } });
+  yibiTone(context, start + 0.003, 0.18, 238, 100, 0.066, { type: "triangle", attack: 0.004, sweep: 0.046, decay: { time: 0.065, level: 0.4 } });
+  const chimes = [[0.028, 1047, 0.48, 0.064], [0.079, 1319, 0.55, 0.052], [0.132, 1568, 0.68, 0.048]];
+  for (const [offset, frequency, duration, volume] of chimes) {
+    const time = start + offset;
+    yibiTone(context, time, duration, frequency, frequency, volume, {
+      attack: 0.007, decay: { time: duration * 0.52, level: 0.24 },
+    });
+    const overtone = frequency * 2.4;
+    yibiTone(context, time, 0.16, overtone, overtone, volume * 0.3, { attack: 0.004 });
+  }
 }
 
 function prepareYibiVoice(context, src) {
@@ -4621,7 +4633,7 @@ function releaseYibiCharge(charge) {
   charge.remaining.splice(charge.position, 1);
   yibiTransferButton.dataset.phase = "burst";
   playYibiBurstSound(charge.context);
-  if (!reduceMotion.matches) navigator.vibrate?.([26, 18, 14]);
+  if (!reduceMotion.matches) navigator.vibrate?.([68, 24, 37]);
   playYibiReply(charge);
 }
 
@@ -4672,8 +4684,16 @@ function endYibiHold(input, releasedAt) {
 }
 
 el["life-transfer-form"].addEventListener("submit", event => event.preventDefault());
+yibiDialog.addEventListener("selectstart", event => {
+  if (event.target !== el["life-transfer-message"]) event.preventDefault();
+});
+// WebKit's long-press loupe can still appear when text selection is disabled.
+yibiTransferButton.addEventListener("touchstart", event => {
+  if (event.cancelable) event.preventDefault();
+}, { passive: false });
 yibiTransferButton.addEventListener("pointerdown", event => {
   if (!event.isPrimary || event.button !== 0) return;
+  event.preventDefault();
   yibiTransferButton.focus({ preventScroll: true });
   if (startYibiCharge(event.pointerId, event.timeStamp)) yibiTransferButton.setPointerCapture(event.pointerId);
 });
