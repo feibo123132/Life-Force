@@ -2572,7 +2572,6 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
 #toolbox {
   container-type: inline-size;
   width: min(800px, calc(100% - 12px), calc((100dvh - 12px) * 1240 / 1019));
-  aspect-ratio: 1240 / 1019;
   max-height: none;
   padding: 0;
   border: 0;
@@ -2580,6 +2579,12 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
   background: url("./assets/toolbox-panel.webp") center / contain no-repeat;
   box-shadow: none;
   filter: drop-shadow(0 7px 12px #2c241070);
+}
+#toolbox::before {
+  /* Size the dialog from its content to avoid WebKit's dialog aspect-ratio bug. */
+  content: "";
+  display: block;
+  padding-top: calc(100% * 1019 / 1240);
 }
 #toolbox button { position: absolute; padding: 0; border: 0; background: none; }
 #toolbox button:hover { background-color: #fff4c91c; }

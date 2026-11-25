@@ -120,8 +120,9 @@
     title.textContent = active ? "我的账号" : loginTitle;
     if (active) promptedForLogin = false;
     forestSave.connect(active ? uid : undefined, async request => {
-      const { result } = await cloudApp.callFunction({ name: "forest-save-sync", data: request }, undefined, { timeout: 12000 });
-      return result;
+      const response = await cloudApp.callFunction({ name: "forest-save-sync", data: request }, undefined, { timeout: 12000 });
+      // CloudBase Gateway returns function results with an error code at the top level.
+      return response?.result ?? response;
     });
     const financeAccount = active ? address.trim().toLowerCase() : "";
     if (financeAccount !== (financeSession?.account ?? "") || (active && uid !== financeSession?.uid)) {
