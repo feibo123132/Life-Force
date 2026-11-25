@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#284a36">
   <title>生命森林</title>
   <link rel="stylesheet" href="./forest.css">
@@ -321,6 +322,9 @@
       <p class="guide" id="experiment-land-count"></p>
       <p class="guide" id="experiment-land-status" role="status"></p>
     </form>
+    <div class="action-editor-form forest-control-form">
+      <button class="purchase-cancel" id="open-experiment-life-transfer" type="button" aria-haspopup="dialog">吉他小妹-伊比</button>
+    </div>
   </dialog>
   <dialog id="account" aria-labelledby="account-title">
     <div class="dialog-heading account-heading">
@@ -373,14 +377,33 @@
   <dialog id="life-transfer" aria-labelledby="life-transfer-title">
     <div class="life-transfer-layout">
       <div class="life-transfer-heading">
-        <h2 id="life-transfer-title">生命力传递</h2>
-        <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭生命力传递" autofocus><svg aria-hidden="true"><use href="#close"/></svg></button></form>
+        <h2 id="life-transfer-title">吉他小妹-伊比</h2>
+        <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭吉他小妹-伊比" autofocus><svg aria-hidden="true"><use href="#close"/></svg></button></form>
       </div>
-      <img class="life-transfer-art" src="./assets/roadshow-guitar.png" width="1086" height="1448" loading="lazy" alt="鲸歌女仆抱着吉他演奏">
+      <div class="life-transfer-stage">
+        <p id="yibi-speech" class="life-transfer-speech" role="status"></p>
+        <img class="life-transfer-art" src="./assets/roadshow-guitar.png" width="1086" height="1448" loading="lazy" alt="吉他小妹伊比抱着吉他演奏">
+        <div class="yibi-stage-burst" aria-hidden="true">
+          <span class="yibi-stage-burst-ring"></span>
+          <img class="yibi-stage-whale" src="./assets/yibi-burst-whale.webp" width="480" height="320" alt="">
+          <div class="yibi-stage-charms">
+            <span>♪</span><span>♫</span><span>♪</span><span>✿</span>
+            <span>♪</span><span>✿</span><span>♫</span><span>♪</span>
+          </div>
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
       <form class="life-transfer-form" id="life-transfer-form">
         <div class="life-transfer-amounts">
-          <button type="submit" name="amount" value="1"><svg aria-hidden="true"><use href="#spark"/></svg>传递 1 点生命力</button>
-          <button type="submit" name="amount" value="2"><svg aria-hidden="true"><use href="#spark"/></svg>传递 2 点生命力</button>
+          <button class="yibi-transfer-button" id="yibi-transfer-button" type="button" title="长按 2 秒">
+            <span class="yibi-transfer-effect" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+            <svg aria-hidden="true"><use href="#spark"/></svg>
+            <span id="yibi-transfer-label">给伊比1点生命力☀️</span>
+          </button>
+          <div class="life-transfer-voices" id="yibi-voice-options" role="group" aria-label="伊比语音">
+            <button type="button" value="f" aria-pressed="true" aria-label="F，对女生说" title="对女生说">F</button>
+            <button type="button" value="m" aria-pressed="false" aria-label="M，对男生说" title="对男生说">M</button>
+          </div>
         </div>
         <label for="life-transfer-message">留言 <span>（可选）</span></label>
         <textarea id="life-transfer-message" rows="2" placeholder="想说的话可以写在这里"></textarea>

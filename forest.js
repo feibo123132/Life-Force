@@ -4419,13 +4419,288 @@ el["forest-grow-form"].addEventListener("submit", event => {
   ripenExperimentCrops(el["forest-grow-plot"].value, event.submitter === el["forest-grow-half"], el["forest-grow-status"]);
 });
 
-el["open-life-transfer"].addEventListener("click", () => el["life-transfer"].showModal());
-el["life-transfer-form"].addEventListener("submit", event => {
-  event.preventDefault();
-  if (!event.submitter) return;
-  const hasMessage = el["life-transfer-message"].value.trim().length > 0;
-  el["life-transfer-status"].textContent = `预览 · 已试传 ${event.submitter.value} 点生命力${hasMessage ? "，附有留言" : ""}`;
+// 各组台词的序号对应 assets/sfx 里的伊比配音文件。
+const yibiLines = {
+  f: [
+    "谢谢姐姐，伊比现在元气满满呢！",
+    "姐姐的生命力伊比收到了，谢谢姐姐。",
+    "姐姐真漂亮，看到姐姐，伊比会莫名地觉得开心。",
+    "希望姐姐每天都元气满满，幸福满满哦。",
+    "有了生命力，伊比就可以去种菜了，谢谢姐姐。",
+    "今天能遇到姐姐，伊比好高兴呀！",
+    "最近天气冷了，姐姐要注意保暖哦。",
+  ],
+  m: [
+    "谢谢哥哥，伊比现在元气满满呢！",
+    "哥哥的生命力伊比收到了，谢谢哥哥。",
+    "希望哥哥每天都元气满满，幸福满满哦。",
+    "有了生命力，伊比就可以去种菜了，谢谢哥哥。",
+    "今天能遇到哥哥，伊比好高兴呀！",
+    "最近天气冷了，哥哥要注意保暖哦。",
+  ],
+};
+const yibiVoiceButtons = el["yibi-voice-options"].querySelectorAll("button");
+const yibiDialog = el["life-transfer"];
+const yibiSpeech = el["yibi-speech"];
+const yibiStatus = el["life-transfer-status"];
+const yibiTransferButton = el["yibi-transfer-button"];
+const yibiTransferLabel = el["yibi-transfer-label"];
+const yibiIdleLabel = yibiTransferLabel.textContent;
+const yibiRemainingLines = { f: [], m: [] };
+const yibiChargeDuration = 2000;
+const yibiEffectVolume = 3.375;
+yibiTransferButton.style.setProperty("--yibi-charge-duration", `${yibiChargeDuration}ms`);
+let yibiAudience = "f";
+let yibiVoice;
+let yibiCharge;
+let yibiAudioContext;
+
+function unlockYibiAudio() {
+  const AudioEngine = globalThis.AudioContext ?? globalThis.webkitAudioContext;
+  if (!AudioEngine) return;
+  try {
+    yibiAudioContext ??= new AudioEngine();
+    if (yibiAudioContext.state !== "running") yibiAudioContext.resume().catch(() => {});
+    return yibiAudioContext;
+  } catch { /* The transfer still works without generated effects. */ }
+}
+
+function yibiTone(context, start, duration, frequency, endFrequency, volume, type = "sine", attack = 0.018) {
+  const tone = context.createOscillator();
+  const gain = context.createGain();
+  tone.type = type;
+  tone.frequency.setValueAtTime(frequency, start);
+  tone.frequency.exponentialRampToValueAtTime(endFrequency, start + duration);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(volume * yibiEffectVolume, start + attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  tone.connect(gain);
+  gain.connect(context.destination);
+  tone.addEventListener("ended", () => gain.disconnect(), { once: true });
+  tone.start(start);
+  tone.stop(start + duration);
+  return tone;
+}
+
+function playYibiChargeSound(context) {
+  if (!context) return;
+  const start = context.currentTime;
+  const duration = yibiChargeDuration / 1000;
+  const tones = [
+    yibiTone(context, start, duration, 196, 587, 0.045, "triangle", duration - 0.05),
+    yibiTone(context, start + 0.28, duration - 0.28, 392, 1174, 0.022, "sine", duration - 0.33),
+  ];
+  const notes = [[0.38, 523], [0.85, 659], [1.33, 784], [1.72, 988]];
+  for (const [offset, frequency] of notes) {
+    tones.push(yibiTone(context, start + offset, 0.22, frequency, frequency, 0.028));
+  }
+  return () => {
+    for (const tone of tones) tone.stop();
+  };
+}
+
+function playYibiBurstSound(context) {
+  if (!context) return;
+  const start = context.currentTime;
+  yibiTone(context, start, 0.22, 196, 64, 0.09, "triangle");
+  yibiTone(context, start + 0.02, 0.29, 1047, 1047, 0.054);
+  yibiTone(context, start + 0.055, 0.32, 1319, 1319, 0.039);
+  yibiTone(context, start + 0.085, 0.32, 1568, 1568, 0.033);
+}
+
+function prepareYibiVoice(context, src) {
+  if (!context || (location.protocol === "file:" && !previewAssetUrl)) return;
+  return fetch(src).then(response => {
+    if (!response.ok) throw new Error("Voice audio unavailable");
+    return response.arrayBuffer();
+  }).then(buffer => context.decodeAudioData(buffer)).catch(() => undefined);
+}
+
+function stopYibiVoice() {
+  const voice = yibiVoice;
+  yibiVoice = undefined;
+  voice?.stop?.();
+  yibiSpeech.textContent = "";
+}
+
+function playYibiReply(charge) {
+  const voice = {};
+  yibiVoice = voice;
+  yibiSpeech.textContent = charge.line;
+  const finish = () => {
+    if (yibiVoice === voice) {
+      voice.stop = undefined;
+      stopYibiVoice();
+    }
+  };
+  const play = buffer => {
+    if (yibiVoice !== voice || !yibiDialog.open) return;
+    if (buffer && charge.context.state === "running") {
+      const source = charge.context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(charge.context.destination);
+      source.onended = finish;
+      voice.stop = () => { source.onended = null; source.stop(); };
+      source.start();
+      return;
+    }
+    const sound = new Audio(charge.src);
+    voice.stop = () => sound.pause();
+    sound.addEventListener("ended", finish, { once: true });
+    playEffect(sound, error => {
+      if (yibiVoice === voice && error.name !== "AbortError") yibiStatus.textContent += " · 语音暂时无法播放";
+    });
+  };
+  if (charge.voiceBuffer) void charge.voiceBuffer.then(play);
+  else play();
+}
+
+function resetYibiCharge() {
+  if (yibiCharge) {
+    clearTimeout(yibiCharge.timer);
+    yibiCharge.stopSound?.();
+    yibiCharge = undefined;
+  }
+  delete yibiTransferButton.dataset.phase;
+  yibiTransferButton.removeAttribute("aria-busy");
+  yibiTransferLabel.textContent = yibiIdleLabel;
+  for (const option of yibiVoiceButtons) option.disabled = false;
+}
+
+function openYibiDialog() {
+  resetYibiCharge();
+  stopYibiVoice();
+  yibiStatus.textContent = inExperiment
+    ? `实验田 · 可用生命力 ${availableEnergy()} 点`
+    : "界面预览 · 长按 2 秒试传";
+  yibiDialog.showModal();
+}
+
+el["open-life-transfer"].addEventListener("click", openYibiDialog);
+el["open-experiment-life-transfer"].addEventListener("click", openYibiDialog);
+for (const button of yibiVoiceButtons) {
+  button.addEventListener("click", () => {
+    if (button.value === yibiAudience) return;
+    yibiAudience = button.value;
+    for (const option of yibiVoiceButtons) option.setAttribute("aria-pressed", String(option === button));
+    stopYibiVoice();
+  });
+}
+yibiDialog.addEventListener("close", () => {
+  if (yibiDialog.open) return;
+  resetYibiCharge();
+  stopYibiVoice();
 });
+
+function releaseYibiCharge(charge) {
+  if (yibiCharge !== charge) return;
+  resetYibiCharge();
+  if (!yibiDialog.open) return;
+  if (charge.saveKey !== activeForestSave().key() || charge.scene !== location.hash) {
+    yibiStatus.textContent = "已取消蓄力，当前场景或存档已切换";
+    return;
+  }
+  if (inExperiment) {
+    const balance = availableEnergy();
+    if (balance < 1) {
+      yibiStatus.textContent = "实验田生命力不足";
+      return;
+    }
+    if (!setAvailableEnergy(balance - 1)) {
+      yibiStatus.textContent = "实验田存档保存失败，未扣除生命力";
+      return;
+    }
+    if (el["forest-controls"].open) el["forest-energy"].value = balance - 1;
+    updateControls();
+    yibiStatus.textContent = `实验田 · 已传递 1 点，剩余 ${balance - 1} 点`;
+  } else {
+    const hasMessage = el["life-transfer-message"].value.trim().length > 0;
+    yibiStatus.textContent = `预览 · 已试传 1 点生命力${hasMessage ? "，附有留言" : ""}`;
+  }
+
+  charge.remaining.splice(charge.position, 1);
+  yibiTransferButton.dataset.phase = "burst";
+  playYibiBurstSound(charge.context);
+  if (!reduceMotion.matches) navigator.vibrate?.([26, 18, 14]);
+  playYibiReply(charge);
+}
+
+function startYibiCharge(input, pressedAt) {
+  if (!yibiDialog.open || yibiCharge) return false;
+  const started = performance.now();
+  stopYibiVoice();
+  resetYibiCharge();
+  if (inExperiment && availableEnergy() < 1) {
+    yibiStatus.textContent = "实验田生命力不足";
+    return false;
+  }
+
+  const lines = yibiLines[yibiAudience];
+  const remaining = yibiRemainingLines[yibiAudience];
+  if (!remaining.length) remaining.push(...lines.keys());
+  const position = Math.floor(Math.random() * remaining.length);
+  const index = remaining[position];
+  const number = String(index + 1).padStart(2, "0");
+  const src = forestAssetUrl(`./assets/sfx/yibi-${yibiAudience}-${number}.mp3`);
+  const context = unlockYibiAudio();
+  const charge = {
+    input, pressedAt,
+    saveKey: activeForestSave().key(), scene: location.hash, remaining, position, src, context,
+    line: lines[index], voiceBuffer: prepareYibiVoice(context, src), stopSound: playYibiChargeSound(context),
+  };
+  yibiCharge = charge;
+  yibiTransferButton.dataset.phase = "charge";
+  yibiTransferButton.setAttribute("aria-busy", "true");
+  yibiTransferLabel.textContent = "蓄力中…";
+  for (const option of yibiVoiceButtons) option.disabled = true;
+  yibiStatus.textContent = "正在蓄力…";
+  charge.timer = setTimeout(() => releaseYibiCharge(charge), yibiChargeDuration - (performance.now() - started));
+  return true;
+}
+
+function cancelYibiHold() {
+  if (!yibiCharge) return;
+  resetYibiCharge();
+  if (yibiDialog.open) yibiStatus.textContent = "蓄力已取消 · 长按 2 秒后传递";
+}
+
+function endYibiHold(input, releasedAt) {
+  const charge = yibiCharge;
+  if (!charge || charge.input !== input) return;
+  if (releasedAt - charge.pressedAt >= yibiChargeDuration) releaseYibiCharge(charge);
+  else cancelYibiHold();
+}
+
+el["life-transfer-form"].addEventListener("submit", event => event.preventDefault());
+yibiTransferButton.addEventListener("pointerdown", event => {
+  if (!event.isPrimary || event.button !== 0) return;
+  yibiTransferButton.focus({ preventScroll: true });
+  if (startYibiCharge(event.pointerId, event.timeStamp)) yibiTransferButton.setPointerCapture(event.pointerId);
+});
+yibiTransferButton.addEventListener("pointermove", event => {
+  if (yibiCharge?.input !== event.pointerId) return;
+  const { left, right, top, bottom } = yibiTransferButton.getBoundingClientRect();
+  if (event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom) cancelYibiHold();
+});
+yibiTransferButton.addEventListener("pointerup", event => endYibiHold(event.pointerId, event.timeStamp));
+for (const type of ["pointercancel", "lostpointercapture"]) {
+  yibiTransferButton.addEventListener(type, event => {
+    if (yibiCharge?.input === event.pointerId) cancelYibiHold();
+  });
+}
+yibiTransferButton.addEventListener("keydown", event => {
+  if (![" ", "Enter"].includes(event.key) || event.isComposing) return;
+  event.preventDefault();
+  if (!event.repeat) startYibiCharge(event.key, event.timeStamp);
+});
+yibiTransferButton.addEventListener("keyup", event => {
+  if (![" ", "Enter"].includes(event.key)) return;
+  event.preventDefault();
+  endYibiHold(event.key, event.timeStamp);
+});
+yibiTransferButton.addEventListener("contextmenu", event => event.preventDefault());
+yibiTransferButton.addEventListener("blur", cancelYibiHold);
+window.addEventListener("blur", cancelYibiHold);
 
 const buttonClickSound = new Audio(forestAssetUrl("./assets/sfx/button-click.mp3"));
 buttonClickSound.volume = 0.72;
@@ -4464,7 +4739,7 @@ function playCropHarvestSound(id) {
 document.addEventListener("click", event => {
   if (!event.isTrusted || !(event.target instanceof Element)) return;
   const button = event.target.closest("button:not(:disabled)");
-  if (!button || button.matches("#open-shop, #open-actions, #open-journal, #open-action-log, #collect-life, .orb, #journal-harvest, [data-sell], #warehouse-sale-confirm")) return;
+  if (!button || button.matches("#open-shop, #open-actions, #open-journal, #open-action-log, #collect-life, .orb, #journal-harvest, [data-sell], #warehouse-sale-confirm, #life-transfer-form button")) return;
   if (button.matches(".plot.planted") && (activeTool === "water" || activeTool === "harvest")) return;
 
   playEffect(buttonClickSound);
