@@ -1681,6 +1681,7 @@ dialog button:focus-visible { outline-color: #55713b; }
 .activity-board-record strong { flex: none; }
 button.activity-board-record { justify-content: space-between; }
 .activity-board-record span, .activity-board-empty { color: var(--muted); }
+.activity-board-record span { white-space: pre-line; overflow-wrap: anywhere; }
 .activity-board-empty { margin: 0; padding: 7px 0; font-size: 13px; }
 #activity-board-records .activity-board-empty {
   position: relative;
@@ -1809,6 +1810,7 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
 .action-editor-form textarea { resize: vertical; }
 .workout-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .workout-fields label { display: grid; gap: 5px; }
+.workout-text-field { grid-column: 1 / -1; }
 .workout-field-value { display: flex; align-items: center; gap: 7px; font-weight: 500; }
 #workout-fields input[type="number"] { width: 100%; }
 #workout-date { margin-top: 8px; }
@@ -2580,6 +2582,7 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
   box-shadow: none;
   filter: drop-shadow(0 7px 12px #2c241070);
 }
+#toolbox:focus { outline: none; }
 #toolbox::before {
   /* Size the dialog from its content to avoid WebKit's dialog aspect-ratio bug. */
   content: "";

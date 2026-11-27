@@ -2523,7 +2523,7 @@ function actionRecordLabel(entry) {
 }
 
 const activityRecordTypes = {
-  workout: { key: "workout", label: "训练", fields: [
+  workout: { key: "workout", label: "训练", textField: ["healthManagement", "健康管理"], fields: [
     ["pushups", "俯卧撑", "次"], ["situps", "仰卧起坐", "次"], ["backExtensions", "仰背", "次"],
     ["dumbbell", "哑铃", "次"], ["pullups", "引体向上", "次"], ["cableAbs", "滑轮练腹", "次"],
     ["burpees", "波比跳", "组"],
@@ -2541,9 +2541,14 @@ function activityRecordConfig(habit) {
 }
 
 function activityRecordSummary(entry) {
-  return Object.values(activityRecordTypes).flatMap(({ key, fields }) =>
-    fields.filter(([id]) => entry?.[key]?.[id] > 0)
-      .map(([id, label, unit]) => `${label} ${entry[key][id]} ${unit}`)).join(" · ");
+  return Object.values(activityRecordTypes).flatMap(({ key, fields, textField }) => {
+    const values = entry?.[key];
+    if (!values) return [];
+    const parts = fields.filter(([id]) => values[id] > 0)
+      .map(([id, label, unit]) => `${label} ${values[id]} ${unit}`);
+    if (textField && values[textField[0]]) parts.push(`${textField[1]}：${values[textField[0]]}`);
+    return parts;
+  }).join(" · ");
 }
 
 const activityPeriods = {
@@ -2595,11 +2600,17 @@ function activityRecordDays(entries, config, today) {
       const value = values[id];
       return Number.isFinite(value) && value > 0 ? [{ id, label, unit, value }] : [];
     });
+    if (config.textField) {
+      const [id, label] = config.textField;
+      if (values[id]) record.push({ id, label, value: values[id] });
+    }
     if (!record.length) continue;
     if (!days.has(entry.date)) days.set(entry.date, { date: entry.date, records: [], totals: {} });
     const day = days.get(entry.date);
     day.records.push(record);
-    for (const { id, value } of record) day.totals[id] = (day.totals[id] ?? 0) + value;
+    for (const { id, unit, value } of record) {
+      if (unit) day.totals[id] = (day.totals[id] ?? 0) + value;
+    }
   }
   return days;
 }
@@ -2710,7 +2721,7 @@ function renderActivityBoardRecords(days, daily, config) {
       title.textContent = `第 ${index + 1} 笔`;
       const details = document.createElement("span");
       details.textContent = record.map(({ label, value, unit }) =>
-        `${label} ${activityNumber.format(value)} ${unit}`).join(" · ");
+        unit ? `${label} ${activityNumber.format(value)} ${unit}` : `${label}：${value}`).join(" · ");
       row.append(title, details);
       return row;
     }));
@@ -2897,13 +2908,27 @@ function renderWorkoutFields(config, entry) {
     label.append(value);
     el["workout-fields"].append(label);
   }
+  if (config.textField) {
+    const [id, name] = config.textField;
+    const label = document.createElement("label");
+    const input = document.createElement("textarea");
+    input.id = `workout-${id}`;
+    input.name = id;
+    input.rows = 3;
+    input.value = entry?.[config.key]?.[id] ?? "";
+    label.className = "workout-text-field";
+    label.htmlFor = input.id;
+    label.append(name, input);
+    el["workout-fields"].append(label);
+  }
 }
 
 function openWorkout(habit, date, status, entry) {
   const config = activityRecordConfig(habit);
   workoutContext = { kind: habit.id, field: config.key, date, status, saveKey: activeForestSave().key(), entry: JSON.stringify(entry) };
   el["workout-title"].textContent = `${habit.name} · ${config.label}记录`;
-  el["workout-guide"].textContent = `填写本次${config.label}的${config.key === "workout" ? "次数或组数" : "数值"}，没做的项目可留空。`;
+  el["workout-guide"].textContent = config.textField ? "填写训练次数、组数或健康管理内容，其他项目可留空。"
+    : `填写本次${config.label}的数值，没做的项目可留空。`;
   el["workout-date"].textContent = `${date} · ${repeatLabel(habit)}`;
   el["workout-status"].textContent = "";
   el["workout-save"].textContent = entry ? "保存修改" : "保存并完成";
@@ -2933,8 +2958,14 @@ el["workout-form"].addEventListener("submit", event => {
     }
     if (value > 0) workout[id] = value;
   }
+  if (config.textField) {
+    const [id] = config.textField;
+    const value = el["workout-form"].elements.namedItem(id).value.trim();
+    if (value) workout[id] = value;
+  }
   if (!Object.keys(workout).length) {
-    el["workout-status"].textContent = `请至少填写一个项目的${config.label}数值。`;
+    el["workout-status"].textContent = config.textField ? "请至少填写一项训练数据或健康管理内容。"
+      : `请至少填写一个项目的${config.label}数值。`;
     return;
   }
   if (entry) {
