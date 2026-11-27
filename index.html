@@ -385,12 +385,15 @@
         <img class="life-transfer-art" src="./assets/roadshow-guitar.png" width="1086" height="1448" loading="lazy" alt="吉他小妹伊比抱着吉他演奏">
         <div class="yibi-stage-burst" aria-hidden="true">
           <span class="yibi-stage-burst-ring"></span>
-          <img class="yibi-stage-whale" src="./assets/yibi-burst-whale.webp" width="480" height="320" alt="">
           <div class="yibi-stage-charms">
             <span>♪</span><span>♫</span><span>♪</span><span>✿</span>
             <span>♪</span><span>✿</span><span>♫</span><span>♪</span>
           </div>
           <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <div class="yibi-coin-artboard">
+            <span class="yibi-bowl-coin"></span>
+            <span class="yibi-bowl-glint"></span>
+          </div>
         </div>
       </div>
       <form class="life-transfer-form" id="life-transfer-form">
@@ -398,7 +401,7 @@
           <button class="yibi-transfer-button" id="yibi-transfer-button" type="button" title="长按 2 秒">
             <span class="yibi-transfer-effect" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
             <svg aria-hidden="true"><use href="#spark"/></svg>
-            <span id="yibi-transfer-label">给伊比1点生命力☀️</span>
+            <span id="yibi-transfer-label">给伊比1枚金币🪙</span>
           </button>
           <div class="life-transfer-voices" id="yibi-voice-options" role="group" aria-label="伊比语音">
             <button type="button" value="f" aria-pressed="true" aria-label="F，对女生说" title="对女生说">F</button>
@@ -643,6 +646,13 @@
       <div><h2 id="ai-adventure-editor-title">AI大冒险</h2><p class="guide" id="ai-adventure-editor-day"></p></div>
       <form method="dialog"><button class="dialog-close" type="submit" aria-label="关闭学习记录"><svg aria-hidden="true"><use href="#close"/></svg></button></form>
     </div>
+    <div class="adventure-undo" id="ai-adventure-completion" hidden>
+      <div>
+        <button class="action-delete" type="button" id="ai-adventure-undo">撤销这次完成</button>
+        <p class="guide">已保存的学习内容会保留。</p>
+      </div>
+      <p class="guide adventure-status" id="ai-adventure-undo-status" role="status"></p>
+    </div>
     <form class="action-editor-form adventure-form" id="ai-adventure-form">
       <label for="ai-adventure-title">标题</label>
       <input id="ai-adventure-title" maxlength="100" required autofocus>
@@ -674,7 +684,6 @@
       <p class="guide adventure-status" id="ai-adventure-status" role="status"></p>
       <div class="action-editor-buttons adventure-buttons">
         <button type="button" id="ai-adventure-skip">仅标记完成</button>
-        <button class="action-delete" type="button" id="ai-adventure-undo" hidden>取消当日完成</button>
         <button class="primary" type="submit" id="ai-adventure-submit">保存并完成</button>
       </div>
     </form>

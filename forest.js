@@ -1053,6 +1053,7 @@ function renderActionCalendar() {
     // 日抛行动在历史那天补记时点明「补记」，和当天的「标记完成」区分开。
     const status = !actionable ? "已在其它日期完成"
       : entry?.source === "finance-link" ? "自动完成"
+      : entry && isAiAdventure(habit) ? "当天已打卡 · 可撤销"
       : repeat === "weekly"
         ? (weekMet ? "已达标" : entry ? "已打卡" : `达标可得 +${actionReward(habit)}`)
         : entry ? "已完成"
@@ -1695,6 +1696,7 @@ function renderHabits(day = todayKey()) {
     control.type = "button";
     control.className = "action-art habit-control";
     control.setAttribute("aria-label", `完成「${habit.name}」`);
+    if (isAiAdventure(habit)) control.classList.add("ai-adventure-control");
     control.addEventListener("click", () => toggleActionCompletion(habit.id, day));
     side.append(reward);
     button.append(artwork, chip, copy, side);
@@ -2208,6 +2210,7 @@ function updateControls() {
     const { button, control, edit, rewardAmount, description, row } = controls;
     const entry = completed.get(habit.id);
     const done = Boolean(entry);
+    const adventure = isAiAdventure(habit);
     const repeat = habitRepeat(habit);
     const actionable = habit.category !== "inspiration" || repeat !== "once" || actionAvailableOn(habit, day, today);
     // 周常的打卡记录不带生命力，行内始终展示这项行动的奖励额度。
@@ -2245,11 +2248,15 @@ function updateControls() {
     ].filter(Boolean).join("，"));
     const activityConfig = activityRecordConfig(habit);
     const opensRecord = activityConfig && (day === today || entry?.[activityConfig.key]);
-    if (isAiAdventure(habit) || opensRecord) control.setAttribute("aria-haspopup", "dialog");
+    if (adventure || opensRecord) control.setAttribute("aria-haspopup", "dialog");
     else control.removeAttribute("aria-haspopup");
+    if (adventure) {
+      control.textContent = done ? "已打卡" : "";
+      control.setAttribute("aria-label", `${done ? "撤销打卡或追加记录" : "完成"}「${habit.name}」`);
+    }
     control.title = control.disabled ? "已在其它日期完成"
       : entry?.source === "finance-link" ? "已由存钱罐自动完成"
-      : isAiAdventure(habit) ? done ? "追加学习记录" : "填写学习记录并完成"
+      : adventure ? done ? "撤销打卡或追加学习记录" : "填写学习记录并完成"
       : opensRecord ? done ? "查看或修改当天记录" : "填写记录并完成"
       : done ? "取消完成" : weekMet ? "继续记录，本周奖励已结算" : "标记完成";
     rewardAmount.textContent = `+${reward}`;
@@ -3055,11 +3062,12 @@ function openAiAdventure({ kind, date, status, completed = false, note }) {
     el["ai-adventure-score"].value = note.score ?? "";
   }
   updateAiAdventureQuality();
-  const label = note ? "编辑学习记录" : completed ? "追加学习记录" : "记录这次学习";
+  const label = note ? "编辑学习记录" : completed ? "已打卡，仍可追加学习记录" : "记录这次学习";
   el["ai-adventure-editor-day"].textContent = `${date.slice(0, 4)}年${formatDate(date)} · ${label}`;
   el["ai-adventure-submit"].textContent = note ? "保存修改" : completed ? "保存记录" : "保存并完成";
   el["ai-adventure-skip"].hidden = Boolean(note) || completed;
-  el["ai-adventure-undo"].hidden = Boolean(note) || !completed;
+  el["ai-adventure-completion"].hidden = Boolean(note) || !completed;
+  el["ai-adventure-undo-status"].textContent = "";
   aiAdventureStatus.textContent = "";
   el["ai-adventure-photo-status"].textContent = "";
   renderAiAdventurePhoto();
@@ -3115,11 +3123,11 @@ el["ai-adventure-photo-file"].addEventListener("change", async event => {
   }
 });
 
-function currentAiAdventure() {
+function currentAiAdventure(status = aiAdventureStatus) {
   const context = aiAdventureContext;
   const habit = state.habits.find(item => item.id === context?.kind);
   if (!isAiAdventure(habit) || context.saveKey !== activeForestSave().key() || !actionAvailableOn(habit, context.date, todayKey())) {
-    aiAdventureStatus.textContent = "行动或存档已变化，请关闭后重新打开。";
+    status.textContent = "行动或存档已变化，请关闭后重新打开。";
     return;
   }
   const completed = state.entries.some(entry => entry.kind === habit.id && entry.date === context.date && !entry.weekly);
@@ -3187,11 +3195,15 @@ el["ai-adventure-skip"].addEventListener("click", () => {
 });
 
 el["ai-adventure-undo"].addEventListener("click", () => {
-  const context = currentAiAdventure();
-  if (!context || !context.completed) return;
-  toggleActionCompletion(context.kind, context.date, aiAdventureStatus, true);
-  if (state.entries.some(entry => entry.kind === context.kind && entry.date === context.date && !entry.weekly)) return;
-  context.status.textContent = aiAdventureStatus.textContent;
+  const status = el["ai-adventure-undo-status"];
+  const context = currentAiAdventure(status);
+  if (!context) return;
+  if (!context.completed) {
+    status.textContent = "这次打卡已撤销。";
+    return;
+  }
+  if (!toggleActionCompletion(context.kind, context.date, status, true)) return;
+  context.status.textContent = status.textContent;
   aiAdventureEditor.close();
 });
 
@@ -3345,16 +3357,15 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
     status.textContent = "这项行动由存钱罐的记账记录自动完成。";
     return;
   }
-  const spent = spentEnergyIds();
+  const spentByEntry = countSpentEnergyByEntry(spentEnergyIds());
   // Only revoke the weekly reward when removing this mark drops progress below the target.
   const losesWeeklyTarget = habitRepeat(habit) === "weekly" && weeklyDone(habit, date) - 1 < habit.weeklyTarget;
   const award = losesWeeklyTarget ? weeklyAwardEntry(habit, date) : undefined;
-  const awardSpent = award && [...spent].some(id => energyEntryId(id) === award.id);
-  if (awardSpent) {
-    status.textContent = "本周达标奖励的生命力已花费，撤回这次打卡会不满足达标条件。";
+  if (award && spentByEntry.has(award.id)) {
+    status.textContent = "本周达标奖励已花费，无法撤销这次打卡。";
     return;
   }
-  if ([...spent].some(id => energyEntryId(id) === entry.id)) {
+  if (spentByEntry.has(entry.id)) {
     status.textContent = "❌这项行动的生命力已花费，无法取消完成。";
     return;
   }
@@ -3367,9 +3378,10 @@ function toggleActionCompletion(kind, date = todayKey(), status = el["action-sta
     return;
   }
   refreshActionCompletion(habit, date);
-  const spentByEntry = countSpentEnergyByEntry(spent);
   const deducted = remainingEntryEnergy(entry, spentByEntry) + (award ? remainingEntryEnergy(award, spentByEntry) : 0);
-  status.textContent = deducted ? `已取消完成，扣回 ${deducted} 点生命力。` : "已取消完成，待领取的生命力已撤回。";
+  const pending = (entry.collected ? 0 : actionReward(entry)) + (award && !award.collected ? actionReward(award) : 0);
+  status.textContent = `已取消完成。${pending ? `已撤回 ${pending} 点待领取的生命力。` : ""}${deducted ? `已扣回 ${deducted} 点已领取的生命力。` : ""}`;
+  return true;
 }
 
 function refreshActionCompletion(habit, date) {
@@ -4479,8 +4491,10 @@ const yibiTransferLabel = el["yibi-transfer-label"];
 const yibiIdleLabel = yibiTransferLabel.textContent;
 const yibiRemainingLines = { f: [], m: [] };
 const yibiChargeDuration = 2000;
+const yibiCoinFlight = 620;
 const yibiEffectVolume = 3.375;
 yibiTransferButton.style.setProperty("--yibi-charge-duration", `${yibiChargeDuration}ms`);
+yibiDialog.style.setProperty("--yibi-coin-flight", `${yibiCoinFlight}ms`);
 let yibiAudience = "f";
 let yibiVoice;
 let yibiCharge;
@@ -4549,6 +4563,14 @@ function playYibiBurstSound(context) {
     const overtone = frequency * 2.4;
     yibiTone(context, time, 0.16, overtone, overtone, volume * 0.3, { attack: 0.004 });
   }
+
+  // A bright metal tick, a hollow ceramic ring, then a softer bounce in the bowl.
+  const impact = start + (reduceMotion.matches ? 0 : yibiCoinFlight / 1000);
+  const coinGain = 1.4;
+  yibiTone(context, impact, 0.13, 2850, 2670, 0.044 * coinGain, { attack: 0.002, sweep: 0.034 });
+  yibiTone(context, impact, 0.23, 936, 936, 0.036 * coinGain, { attack: 0.003, decay: { time: 0.085, level: 0.26 } });
+  yibiTone(context, impact + 0.002, 0.072, 4157, 4100, 0.02 * coinGain, { attack: 0.002 });
+  yibiTone(context, impact + 0.064, 0.1, 2240, 2090, 0.017 * coinGain, { attack: 0.002 });
 }
 
 function prepareYibiVoice(context, src) {
