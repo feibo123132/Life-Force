@@ -2712,6 +2712,51 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
 .life-transfer-heading .dialog-close { border-color: #e4e8f5; background: #f4f6ff; border-radius: 50%; }
 .life-transfer-heading .dialog-close:hover { background: #e9edfd; }
 .life-transfer-stage { position: relative; min-height: 0; min-width: 0; }
+.yibi-daily-coins {
+  --yibi-count-border: #aec2ee;
+  position: absolute;
+  z-index: 1;
+  inset-block-start: -12px;
+  inset-inline-start: -5px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-inline-size: clamp(96px, 23vw, 118px);
+  padding: 8px 12px 9px;
+  border: 2px solid var(--yibi-count-border);
+  border-radius: 23px 25px 22px 20px;
+  background: linear-gradient(150deg, #fcfdff, #eaf0ff);
+  filter: drop-shadow(0 3px 5px #34488224);
+  color: #526082;
+  font-size: clamp(10px, 2.5vw, 12px);
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.yibi-daily-coins::before,
+.yibi-daily-coins::after {
+  content: "";
+  position: absolute;
+  inset-block-end: -6px;
+  inset-inline-end: -24px;
+  width: 43px;
+  height: 26px;
+}
+.yibi-daily-coins::before {
+  background: var(--yibi-count-border);
+  clip-path: path("M19 5 C24 14 32 21 42 23 C31 26 17 25 9 21 Z");
+}
+.yibi-daily-coins::after {
+  background: #eef3ff;
+  clip-path: path("M16 5 C24 15 31 20 37 23 C27 24 17 23 8 18 Z");
+}
+.yibi-daily-coins strong {
+  color: #ffd03c;
+  font-size: clamp(20px, 5vw, 30px);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
 .life-transfer-speech {
   --speech-width: min(calc(100vw - 24px), clamp(212px, 44vw, 264px));
   position: absolute;
@@ -2739,6 +2784,9 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
 .life-transfer-art { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
 @media (max-width: 480px) {
   .life-transfer-speech { top: max(48px, 12%); }
+}
+@media (max-width: 374px) {
+  .life-transfer-speech { --speech-width: min(212px, calc(100vw - 162px)); }
 }
 .life-transfer-form { display: grid; gap: 6px; min-width: 0; }
 .life-transfer-amounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }

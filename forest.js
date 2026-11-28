@@ -1446,18 +1446,17 @@ function availableEnergyIds(amount) {
   return ids;
 }
 
-function setAvailableEnergy(target, sourceLabel = "神之一手") {
-  const previousEntries = state.entries;
-  const spentByEntry = countSpentEnergyByEntry(spentEnergyIds());
-  const balance = previousEntries.reduce((total, entry) => total + remainingEntryEnergy(entry, spentByEntry), 0);
+function setAvailableEnergy(target, sourceLabel = "神之一手", snapshot = state) {
+  const entries = [...snapshot.entries];
+  const spentByEntry = countSpentEnergyByEntry(spentEnergyIds(snapshot));
+  const balance = entries.reduce((total, entry) => total + remainingEntryEnergy(entry, spentByEntry), 0);
   if (target === balance) return true;
 
   if (target > balance) {
     const id = crypto.randomUUID?.() ?? `energy-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
-    state.entries = [...previousEntries, { id, kind: "sample", actionLabel: sourceLabel, reward: target - balance, collected: true }];
+    entries.push({ id, kind: "sample", actionLabel: sourceLabel, reward: target - balance, collected: true });
   } else {
     let withdrawal = balance - target;
-    const entries = [...previousEntries];
     // Only remove unspent points, leaving IDs already linked to crops and purchases intact.
     for (let index = entries.length - 1; withdrawal > 0 && index >= 0; index--) {
       const entry = entries[index];
@@ -1466,12 +1465,12 @@ function setAvailableEnergy(target, sourceLabel = "神之一手") {
       entries[index] = { ...entry, withheldEnergy: (entry.withheldEnergy ?? 0) + amount };
       withdrawal -= amount;
     }
-    state.entries = entries;
   }
 
-  if (saveState()) return true;
-  state.entries = previousEntries;
-  return false;
+  const next = { ...snapshot, entries };
+  if (!saveState(next)) return false;
+  state = next;
+  return true;
 }
 
 function notify(message) {
@@ -2204,6 +2203,7 @@ function updateExpansionDialog() {
 function updateControls() {
   el["open-ai-adventure-history"].hidden = !state.habits.some(isAiAdventure) && !aiAdventureRecords().length;
   const today = todayKey();
+  if (el["life-transfer"].open) renderYibiDailyCoins(today);
   const day = actionViewDay ?? today;
   const viewingPast = day !== today;
   if (day !== displayedDay) renderHabits(day);
@@ -4481,18 +4481,18 @@ el["forest-grow-form"].addEventListener("submit", event => {
 const yibiLines = {
   f: [
     "谢谢姐姐，伊比现在元气满满呢！",
-    "姐姐的生命力伊比收到了，谢谢姐姐。",
+    "姐姐的金币伊比收到了，谢谢姐姐。",
     "姐姐真漂亮，看到姐姐，伊比会莫名地觉得开心。",
     "希望姐姐每天都元气满满，幸福满满哦。",
-    "有了生命力，伊比就可以去种菜了，谢谢姐姐。",
+    "有了金币，伊比就可以去种菜了，谢谢姐姐。",
     "今天能遇到姐姐，伊比好高兴呀！",
     "最近天气冷了，姐姐要注意保暖哦。",
   ],
   m: [
     "谢谢哥哥，伊比现在元气满满呢！",
-    "哥哥的生命力伊比收到了，谢谢哥哥。",
+    "哥哥的金币伊比收到了，谢谢哥哥。",
     "希望哥哥每天都元气满满，幸福满满哦。",
-    "有了生命力，伊比就可以去种菜了，谢谢哥哥。",
+    "有了金币，伊比就可以去种菜了，谢谢哥哥。",
     "今天能遇到哥哥，伊比好高兴呀！",
     "最近天气冷了，哥哥要注意保暖哦。",
   ],
@@ -4647,9 +4647,14 @@ function resetYibiCharge() {
   for (const option of yibiVoiceButtons) option.disabled = false;
 }
 
+function renderYibiDailyCoins(day = todayKey()) {
+  el["yibi-daily-coins"].textContent = state.yibiDailyCoins?.[day] ?? 0;
+}
+
 function openYibiDialog() {
   resetYibiCharge();
   stopYibiVoice();
+  renderYibiDailyCoins();
   yibiStatus.textContent = inExperiment
     ? `实验田 · 可用生命力 ${availableEnergy()} 点`
     : "长按 2 秒 · 获得 1 点生命力";
@@ -4681,24 +4686,24 @@ function releaseYibiCharge(charge) {
     return;
   }
   const balance = availableEnergy();
+  if (inExperiment && balance < 1) {
+    yibiStatus.textContent = "实验田生命力不足";
+    return;
+  }
+  const day = todayKey();
+  const dailyCoins = state.yibiDailyCoins;
+  const snapshot = { ...state, yibiDailyCoins: { ...dailyCoins, [day]: (dailyCoins?.[day] ?? 0) + 1 } };
+  const nextBalance = inExperiment ? balance - 1 : balance + 1;
+  if (!setAvailableEnergy(nextBalance, "伊比金币传递", snapshot)) {
+    yibiStatus.textContent = inExperiment ? "实验田存档保存失败，未扣除生命力" : "存档保存失败，未增加生命力";
+    return;
+  }
   if (inExperiment) {
-    if (balance < 1) {
-      yibiStatus.textContent = "实验田生命力不足";
-      return;
-    }
-    if (!setAvailableEnergy(balance - 1)) {
-      yibiStatus.textContent = "实验田存档保存失败，未扣除生命力";
-      return;
-    }
-    if (el["forest-controls"].open) el["forest-energy"].value = balance - 1;
-    yibiStatus.textContent = `实验田 · 已传递 1 点，剩余 ${balance - 1} 点`;
+    if (el["forest-controls"].open) el["forest-energy"].value = nextBalance;
+    yibiStatus.textContent = `实验田 · 已传递 1 点，剩余 ${nextBalance} 点`;
   } else {
-    if (!setAvailableEnergy(balance + 1, "伊比金币传递")) {
-      yibiStatus.textContent = "存档保存失败，未增加生命力";
-      return;
-    }
     const hasMessage = el["life-transfer-message"].value.trim().length > 0;
-    yibiStatus.textContent = `已获得 1 点生命力，当前 ${balance + 1} 点${hasMessage ? " · 已填写留言" : ""}`;
+    yibiStatus.textContent = `已获得 1 点生命力，当前 ${nextBalance} 点${hasMessage ? " · 已填写留言" : ""}`;
   }
   updateControls();
 
