@@ -6,6 +6,7 @@ const { createForestSaveSync } = require("../save-sync.js");
 const { createSaveHandler } = require("../cloudfunctions/forest-save-sync/handler.cjs");
 
 const legacyKey = "life-forest-v2";
+const experimentKey = "life-forest-experiment-v1";
 const snapshot = (name, entries = []) => ({
   entries, trees: [], player: { name, xp: 420, avatar: "data:image/png;base64,AA==" },
 });
@@ -20,23 +21,26 @@ function makeStorage() {
 
 function makeCloud() {
   const records = new Map();
+  const experimentRecords = new Map();
+  const collections = { daily: records, experiment: experimentRecords };
   const handle = uid => createSaveHandler({
     getUid: () => uid,
-    load: async key => records.get(key),
-    compareAndSet: async (key, base, next) => {
+    load: async (key, scope) => collections[scope].get(key),
+    compareAndSet: async (key, base, next, scope) => {
+      const records = collections[scope];
       if ((records.get(key)?.revision ?? 0) !== base) return false;
       records.set(key, next);
       return true;
     },
   });
-  return { handle, records };
+  return { handle, records, experimentRecords };
 }
 
-function makeClient(storage = makeStorage()) {
+function makeClient(storage = makeStorage(), key = legacyKey, online = () => true) {
   const statuses = [];
   const sync = createForestSaveSync({
-    legacyKey, storage, onChange: () => sync.read(), onStatus: status => statuses.push(status),
-    schedule: () => {}, online: () => true, visible: () => true,
+    legacyKey: key, storage, onChange: () => sync.read(), onStatus: status => statuses.push(status),
+    schedule: () => {}, online, visible: () => true,
   });
   return { sync, storage, statuses };
 }
@@ -175,4 +179,71 @@ test("concurrent first uploads save once, and a retry of the same write succeeds
   assert.deepEqual(await handle("owner")(first), { ok: true, revision: 1 });
   assert.equal((await handle("other")(first)).code, "LOGIN_REQUIRED");
   assert.equal((await handle(undefined)(first)).code, "LOGIN_REQUIRED");
+});
+
+test("experiment sync imports existing progress and keeps farm and account saves independent", async () => {
+  const { handle, records, experimentRecords } = makeCloud();
+  const requestExperiment = uid => ({ expectedUid, ...experiment }) => handle(uid)({ expectedUid, experiment });
+  const { sync: daily, storage } = makeClient();
+  const { sync: experiment } = makeClient(storage, experimentKey);
+  const { sync: phone } = makeClient(makeStorage(), experimentKey);
+  const dailySave = snapshot("日常田");
+  const experimentSave = {
+    ...snapshot("试验田", [{ id: "experiment:starter", kind: "sample", reward: 100, collected: true }]),
+    trees: [{ plot: 4, species: "pumpkin" }],
+    experimentExpansions: [[4]], allPlantsUnlocked: true, warehouse: { pumpkin: 3 },
+  };
+  storage.setItem(experimentKey, JSON.stringify(experimentSave));
+  daily.connect("owner", handle("owner"));
+  daily.write(dailySave);
+  experiment.connect("owner", requestExperiment("owner"));
+  await Promise.all([daily.sync(), experiment.sync()]);
+  assert.deepEqual(records.get("owner").snapshot, dailySave);
+  assert.deepEqual(experimentRecords.get("owner").snapshot, experimentSave);
+  assert.equal(storage.getItem(experimentKey), JSON.stringify(experimentSave));
+
+  phone.connect("owner", requestExperiment("owner"));
+  await phone.sync();
+  assert.deepEqual(phone.read(), experimentSave);
+  phone.write({ ...experimentSave, trees: [] });
+  await phone.sync();
+  await experiment.sync();
+  assert.deepEqual(experiment.read().trees, []);
+  assert.equal(records.get("owner").revision, 1);
+  assert.equal(experimentRecords.get("owner").revision, 2);
+
+  phone.connect("another", requestExperiment("another"));
+  await phone.sync();
+  assert.equal(phone.read(), null);
+  assert.equal((await requestExperiment("another")({ expectedUid: "owner", revision: 0 })).code, "LOGIN_REQUIRED");
+  assert.equal((await handle("owner")({ expectedUid: "owner", revision: 0, experiment: null })).code, "INVALID_SAVE");
+});
+
+test("offline experiment edits conflict safely with changes from another device", async () => {
+  const { handle, experimentRecords } = makeCloud();
+  const request = ({ expectedUid, ...experiment }) => handle("owner")({ expectedUid, experiment });
+  const { sync: desktop } = makeClient(makeStorage(), experimentKey);
+  let online = true;
+  const { sync: phone, storage, statuses } = makeClient(makeStorage(), experimentKey, () => online);
+  desktop.connect("owner", request);
+  desktop.write(snapshot("原试验田"));
+  await desktop.sync();
+  phone.connect("owner", request);
+  await phone.sync();
+
+  online = false;
+  phone.write(snapshot("离线更改"));
+  await phone.sync();
+  assert.equal(statuses.at(-1), "offline");
+  desktop.write(snapshot("桌面更改"));
+  await desktop.sync();
+  online = true;
+  await phone.sync();
+  assert.equal(statuses.at(-1), "conflict");
+  assert.equal(experimentRecords.get("owner").snapshot.player.name, "桌面更改");
+
+  phone.resolveConflict("local");
+  await phone.sync();
+  assert.equal(experimentRecords.get("owner").snapshot.player.name, "离线更改");
+  assert.equal(JSON.parse(storage.getItem(phone.key() + ":backup")).snapshot.player.name, "桌面更改");
 });

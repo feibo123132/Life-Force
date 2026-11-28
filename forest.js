@@ -521,8 +521,11 @@ const forestSave = createForestSaveSync({
 const experimentSave = createForestSaveSync({
   legacyKey: previewAssetUrl ? "life-forest-preview-experiment-v1" : "life-forest-experiment-v1",
   storage: forestStorage,
-  onChange: () => { if (inExperiment) refreshSavedForest(); },
-  onStatus: () => {},
+  onChange: () => {
+    if (inExperiment) refreshSavedForest();
+    else readState(experimentSave);
+  },
+  onStatus: status => updateForestSyncStatus(status, "experiment"),
 });
 
 function activeForestSave() {
@@ -610,25 +613,35 @@ function saveState(snapshot = state, save = activeForestSave()) {
   }
 }
 
-function updateForestSyncStatus(status) {
-  const messages = {
-    guest: "",
-    connecting: "正在读取云端存档…",
-    pending: "已保存在此设备，正在上传…",
-    synced: "游戏存档已同步。",
-    offline: "当前离线，联网后会自动同步。",
-    unavailable: "暂时无法同步，改动已保存在此设备。",
-    "too-large": "存档超过云端同步大小限制，已保存在此设备。",
-    storage: "浏览器存储不可用，暂时无法同步。",
-    conflict: "此设备和云端都有不同的进度。选择保留哪份存档，另一份会备份到此浏览器。",
-    "conflict-storage": "浏览器空间不足，未能备份存档。请腾出空间后再选择。",
-  };
-  const conflict = status === "conflict" || status === "conflict-storage";
-  el["account-sync-status"].textContent = messages[status];
-  el["account-sync-choices"].hidden = !conflict;
-  el["account-sync-retry"].hidden = !["unavailable", "offline", "storage"].includes(status);
-  el["player-login-status"].textContent = conflict ? "存档冲突" : "已登录";
-  el["storage-note"].textContent = messages[status] || "行动、植物与库存保存在此浏览器";
+const forestSyncStatuses = { daily: "guest", experiment: "guest" };
+const forestSyncMessages = {
+  guest: "",
+  connecting: "正在读取云端存档…",
+  pending: "已保存在此设备，正在上传…",
+  synced: "存档已同步。",
+  offline: "当前离线，联网后会自动同步。",
+  unavailable: "暂时无法同步，改动已保存在此设备。",
+  "too-large": "存档超过云端同步大小限制，已保存在此设备。",
+  storage: "浏览器存储不可用，暂时无法同步。",
+  conflict: "此设备和云端都有不同的进度。选择保留哪份存档，另一份会备份到此浏览器。",
+  "conflict-storage": "浏览器空间不足，未能备份存档。请腾出空间后再选择。",
+};
+
+function renderActiveForestSyncStatus() {
+  const status = forestSyncStatuses[inExperiment ? "experiment" : "daily"];
+  el["player-login-status"].textContent = status.startsWith("conflict") ? "存档冲突" : "已登录";
+  el["storage-note"].textContent = forestSyncMessages[status] || "行动、植物与库存保存在此浏览器";
+}
+
+function updateForestSyncStatus(status, scope = "daily") {
+  forestSyncStatuses[scope] = status;
+  const experiment = scope === "experiment";
+  const prefix = experiment ? "account-experiment-sync" : "account-sync";
+  const message = forestSyncMessages[status];
+  el[`${prefix}-status`].textContent = message ? `${experiment ? "试验田" : "日常田"} · ${message}` : "";
+  el[`${prefix}-choices`].hidden = !status.startsWith("conflict");
+  el[`${prefix}-retry`].hidden = !["unavailable", "offline", "storage"].includes(status);
+  if (experiment === inExperiment) renderActiveForestSyncStatus();
 }
 
 function icon(name) {
@@ -1433,7 +1446,7 @@ function availableEnergyIds(amount) {
   return ids;
 }
 
-function setAvailableEnergy(target) {
+function setAvailableEnergy(target, sourceLabel = "神之一手") {
   const previousEntries = state.entries;
   const spentByEntry = countSpentEnergyByEntry(spentEnergyIds());
   const balance = previousEntries.reduce((total, entry) => total + remainingEntryEnergy(entry, spentByEntry), 0);
@@ -1441,7 +1454,7 @@ function setAvailableEnergy(target) {
 
   if (target > balance) {
     const id = crypto.randomUUID?.() ?? `energy-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`;
-    state.entries = [...previousEntries, { id, kind: "sample", actionLabel: "神之一手", reward: target - balance, collected: true }];
+    state.entries = [...previousEntries, { id, kind: "sample", actionLabel: sourceLabel, reward: target - balance, collected: true }];
   } else {
     let withdrawal = balance - target;
     const entries = [...previousEntries];
@@ -3872,6 +3885,8 @@ function syncWorldScene() {
     el["experiment-navigation"].hidden = !inExperiment;
     el["open-ranch"].hidden = inExperiment;
     refreshSavedForest();
+    renderActiveForestSyncStatus();
+    void activeForestSave().sync();
     syncExperimentMusic();
   }
   el.camera.inert = inRanch;
@@ -4637,7 +4652,7 @@ function openYibiDialog() {
   stopYibiVoice();
   yibiStatus.textContent = inExperiment
     ? `实验田 · 可用生命力 ${availableEnergy()} 点`
-    : "界面预览 · 长按 2 秒试传";
+    : "长按 2 秒 · 获得 1 点生命力";
   yibiDialog.showModal();
 }
 
@@ -4665,8 +4680,8 @@ function releaseYibiCharge(charge) {
     yibiStatus.textContent = "已取消蓄力，当前场景或存档已切换";
     return;
   }
+  const balance = availableEnergy();
   if (inExperiment) {
-    const balance = availableEnergy();
     if (balance < 1) {
       yibiStatus.textContent = "实验田生命力不足";
       return;
@@ -4676,12 +4691,16 @@ function releaseYibiCharge(charge) {
       return;
     }
     if (el["forest-controls"].open) el["forest-energy"].value = balance - 1;
-    updateControls();
     yibiStatus.textContent = `实验田 · 已传递 1 点，剩余 ${balance - 1} 点`;
   } else {
+    if (!setAvailableEnergy(balance + 1, "伊比金币传递")) {
+      yibiStatus.textContent = "存档保存失败，未增加生命力";
+      return;
+    }
     const hasMessage = el["life-transfer-message"].value.trim().length > 0;
-    yibiStatus.textContent = `预览 · 已试传 1 点生命力${hasMessage ? "，附有留言" : ""}`;
+    yibiStatus.textContent = `已获得 1 点生命力，当前 ${balance + 1} 点${hasMessage ? " · 已填写留言" : ""}`;
   }
+  updateControls();
 
   charge.remaining.splice(charge.position, 1);
   yibiTransferButton.dataset.phase = "burst";
@@ -5232,19 +5251,25 @@ function refreshSavedForest() {
 }
 window.addEventListener("storage", event => {
   forestSave.storageChanged(event.key);
-  if (inExperiment) experimentSave.storageChanged(event.key);
+  experimentSave.storageChanged(event.key);
 });
-window.addEventListener("focus", () => void forestSave.sync());
-window.addEventListener("online", () => void forestSave.sync());
-window.addEventListener("offline", () => void forestSave.sync());
-document.addEventListener("visibilitychange", () => {
+function syncForestSaves() {
   void forestSave.sync();
+  void experimentSave.sync();
+}
+window.addEventListener("focus", syncForestSaves);
+window.addEventListener("online", syncForestSaves);
+window.addEventListener("offline", syncForestSaves);
+document.addEventListener("visibilitychange", () => {
+  syncForestSaves();
   if (!document.hidden && todayKey() !== renderedToday) updateControls();
 });
-setInterval(() => void forestSave.sync(), 30_000);
-el["account-sync-retry"].addEventListener("click", () => void forestSave.sync());
-el["account-sync-local"].addEventListener("click", () => forestSave.resolveConflict("local"));
-el["account-sync-cloud"].addEventListener("click", () => forestSave.resolveConflict("cloud"));
+setInterval(syncForestSaves, 30_000);
+for (const [save, prefix] of [[forestSave, "account-sync"], [experimentSave, "account-experiment-sync"]]) {
+  el[`${prefix}-retry`].addEventListener("click", () => void save.sync());
+  el[`${prefix}-local`].addEventListener("click", () => save.resolveConflict("local"));
+  el[`${prefix}-cloud`].addEventListener("click", () => save.resolveConflict("cloud"));
+}
 window.addEventListener("focus", () => {
   if (todayKey() !== renderedToday) updateControls();
   refreshGrowth();

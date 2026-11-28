@@ -364,11 +364,17 @@
     <div class="account-session" id="account-session" hidden>
       <p>已登录 <strong id="account-identity"></strong></p>
       <p id="account-sync-status" class="guide" role="status"></p>
-      <div class="account-modes" id="account-sync-choices" hidden>
+      <div class="account-modes account-sync-choices" id="account-sync-choices" role="group" aria-label="日常田存档冲突" hidden>
         <button id="account-sync-local" class="account-send" type="button">使用此设备</button>
         <button id="account-sync-cloud" class="account-send" type="button">使用云端</button>
       </div>
-      <button id="account-sync-retry" class="account-send" type="button" hidden>重试同步</button>
+      <button id="account-sync-retry" class="account-send" type="button" hidden>重试同步日常田</button>
+      <p id="account-experiment-sync-status" class="guide" role="status"></p>
+      <div class="account-modes account-sync-choices" id="account-experiment-sync-choices" role="group" aria-label="试验田存档冲突" hidden>
+        <button id="account-experiment-sync-local" class="account-send" type="button">使用此设备</button>
+        <button id="account-experiment-sync-cloud" class="account-send" type="button">使用云端</button>
+      </div>
+      <button id="account-experiment-sync-retry" class="account-send" type="button" hidden>重试同步试验田</button>
       <p id="account-finance-status" class="guide" role="status"></p>
       <button class="account-submit" id="account-sign-out" type="button">退出登录</button>
     </div>
@@ -410,7 +416,7 @@
         </div>
         <label for="life-transfer-message">留言 <span>（可选）</span></label>
         <textarea id="life-transfer-message" rows="2" placeholder="想说的话可以写在这里"></textarea>
-        <p id="life-transfer-status" role="status">界面预览 · 可以试传生命力</p>
+        <p id="life-transfer-status" role="status">长按 2 秒 · 获得 1 点生命力</p>
       </form>
     </div>
   </dialog>

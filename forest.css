@@ -2663,7 +2663,7 @@ button.leaderboard-summary:hover { background: #fff2c94d; }
 .account-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 4px; margin-bottom: 6px; border-radius: 13px; background: #eff3fb; }
 .account-modes button { min-height: 40px; padding: 3px; border: 1px solid transparent; border-radius: 10px; background: none; color: #4e5d7a; font-size: 14px; font-weight: 700; }
 .account-modes button[aria-pressed="true"] { border-color: #dce5f4; background: #fff; color: #293e7c; box-shadow: 0 1px 3px #182e5514; }
-#account-sync-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.account-sync-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .account-section, .account-session { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 #account label { font-size: 13px; font-weight: 700; }
 .account-section { margin-top: 6px; }

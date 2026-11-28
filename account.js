@@ -119,17 +119,25 @@
     byId("player-login-status").hidden = !active;
     title.textContent = active ? "我的账号" : loginTitle;
     if (active) promptedForLogin = false;
-    forestSave.connect(active ? uid : undefined, async request => {
+    const requestSave = async request => {
       const response = await cloudApp.callFunction({ name: "forest-save-sync", data: request }, undefined, { timeout: 12000 });
       // CloudBase Gateway returns function results with an error code at the top level.
       return response?.result ?? response;
+    };
+    forestSave.connect(active ? uid : undefined, requestSave);
+    experimentSave.connect(active ? uid : undefined, async ({ expectedUid, ...experiment }) => {
+      const response = await requestSave({ expectedUid, experiment });
+      return response?.scope === "experiment" ? response : undefined;
     });
     const financeAccount = active ? address.trim().toLowerCase() : "";
     if (financeAccount !== (financeSession?.account ?? "") || (active && uid !== financeSession?.uid)) {
       financeSession = financeAccount ? { account: financeAccount, uid, checkedAt: 0, pending: false } : undefined;
       byId("account-finance-status").textContent = "";
     }
-    if (active) void forestSave.sync().then(refreshFinanceLink);
+    if (active) {
+      void forestSave.sync().then(refreshFinanceLink);
+      void experimentSave.sync();
+    }
     return active;
   }
 
